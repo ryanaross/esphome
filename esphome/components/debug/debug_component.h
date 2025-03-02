@@ -24,6 +24,9 @@ static constexpr size_t RESET_REASON_BUFFER_SIZE = 128;
 class DebugComponent : public PollingComponent {
  public:
   void loop() override;
+#ifdef USE_ESP32
+  void setup() override;
+#endif
   void update() override;
   float get_setup_priority() const override;
   void dump_config() override;
@@ -44,6 +47,7 @@ class DebugComponent : public PollingComponent {
   void set_loop_time_sensor(sensor::Sensor *loop_time_sensor) { loop_time_sensor_ = loop_time_sensor; }
 #ifdef USE_ESP32
   void set_psram_sensor(sensor::Sensor *psram_sensor) { this->psram_sensor_ = psram_sensor; }
+  void set_log_cpu_usage(bool log_cpu_usage) { this->log_cpu_usage_ = log_cpu_usage; }
 #endif  // USE_ESP32
   void set_cpu_frequency_sensor(sensor::Sensor *cpu_frequency_sensor) {
     this->cpu_frequency_sensor_ = cpu_frequency_sensor;
@@ -70,6 +74,7 @@ class DebugComponent : public PollingComponent {
   sensor::Sensor *loop_time_sensor_{nullptr};
 #ifdef USE_ESP32
   sensor::Sensor *psram_sensor_{nullptr};
+  bool log_cpu_usage_;
 #endif  // USE_ESP32
   sensor::Sensor *cpu_frequency_sensor_{nullptr};
 #endif  // USE_SENSOR

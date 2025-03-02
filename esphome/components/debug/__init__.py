@@ -1,4 +1,5 @@
 import esphome.codegen as cg
+from esphome.components import esp32
 from esphome.components.zephyr import zephyr_add_prj_conf
 from esphome.config_helpers import filter_source_files_from_platform
 import esphome.config_validation as cv
@@ -16,6 +17,8 @@ from esphome.core import CORE
 CODEOWNERS = ["@esphome/core"]
 DEPENDENCIES = ["logger"]
 
+CONF_LOG_CPU_USAGE = "log_cpu_usage"
+
 CONF_DEBUG_ID = "debug_id"
 debug_ns = cg.esphome_ns.namespace("debug")
 DebugComponent = debug_ns.class_("DebugComponent", cg.PollingComponent)
@@ -25,6 +28,9 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(DebugComponent),
+            cv.Optional(CONF_LOG_CPU_USAGE, default=False): cv.All(
+                cv.only_on_esp32, cv.boolean
+            ),
             cv.Optional(CONF_DEVICE): cv.invalid(
                 "The 'device' option has been moved to the 'debug' text_sensor component"
             ),
@@ -60,6 +66,11 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add_define("USE_DEBUG")
+
+    if config[CONF_LOG_CPU_USAGE]:
+        esp32.add_idf_sdkconfig_option("CONFIG_FREERTOS_USE_TRACE_FACILITY", True)
+        esp32.add_idf_sdkconfig_option("CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS", True)
+    cg.add(var.set_log_cpu_usage(config[CONF_LOG_CPU_USAGE]))
 
 
 FILTER_SOURCE_FILES = filter_source_files_from_platform(
