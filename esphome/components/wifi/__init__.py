@@ -10,6 +10,7 @@ from esphome.components.network import (
     ip_address_literal,
 )
 from esphome.components.psram import is_guaranteed as psram_is_guaranteed
+from esphome.components.socket import require_wake_loop_threadsafe
 from esphome.config_helpers import filter_source_files_from_platform
 import esphome.config_validation as cv
 from esphome.const import (
@@ -439,6 +440,10 @@ def wifi_network(config, ap, static_ip):
 
 @coroutine_with_priority(CoroPriority.COMMUNICATION)
 async def to_code(config):
+    # TODO: Does this need to be early in to_code, or can I put it with the other high performance networking configuration?
+    if CORE.is_esp32 and has_high_performance_networking():
+        require_wake_loop_threadsafe()
+
     var = cg.new_Pvariable(config[CONF_ID])
     cg.add(var.set_use_address(config[CONF_USE_ADDRESS]))
 

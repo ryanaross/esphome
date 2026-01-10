@@ -1843,7 +1843,16 @@ bool WiFiComponent::request_high_performance() {
   }
 
   // Give the semaphore (non-blocking). This increments the count.
-  return xSemaphoreGive(this->high_performance_semaphore_) == pdTRUE;
+  bool success = xSemaphoreGive(this->high_performance_semaphore_) == pdTRUE;
+
+  // Wake the main loop to immediately process
+#if defined(USE_SOCKET_SELECT_SUPPORT) && defined(USE_WAKE_LOOP_THREADSAFE)
+  if (success) {
+    App.wake_loop_threadsafe();
+  }
+#endif
+
+  return success;
 }
 
 bool WiFiComponent::release_high_performance() {
@@ -1858,7 +1867,16 @@ bool WiFiComponent::release_high_performance() {
   }
 
   // Take the semaphore (non-blocking). This decrements the count.
-  return xSemaphoreTake(this->high_performance_semaphore_, 0) == pdTRUE;
+  bool success = xSemaphoreTake(this->high_performance_semaphore_, 0) == pdTRUE;
+
+  // Wake the main loop to immediately process
+#if defined(USE_SOCKET_SELECT_SUPPORT) && defined(USE_WAKE_LOOP_THREADSAFE)
+  if (success) {
+    App.wake_loop_threadsafe();
+  }
+#endif
+
+  return success;
 }
 #endif  // USE_ESP32 && USE_WIFI_RUNTIME_POWER_SAVE
 
