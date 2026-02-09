@@ -64,43 +64,10 @@ enum EventGroupBits : uint32_t {
   TASK_STOPPED = (1 << 10),
 };
 
-void SendspinMediaSource::init_pipelines(size_t pipeline_count) {
-  media_source::MediaSource::init_pipelines(pipeline_count);
-
-  this->sendspin_pipelines_.init(pipeline_count);
-  for (size_t i = 0; i < pipeline_count; i++) {
-    SendspinMediaSourcePipeline ctx;
-
-    // Create event group and queue upfront so they're available when play_uri is called
-    ctx.event_group = xEventGroupCreate();
-    ctx.controls_queue = xQueueCreate(3, sizeof(ControlMessage));
-
-    ctx.playback_progress_queue = xQueueCreateWithCaps(50, sizeof(PlaybackProgress), MALLOC_CAP_SPIRAM);
-    if (ctx.playback_progress_queue == nullptr) {
-      // TODO: Need to actually make this function failable
-      ESP_LOGE(TAG, "Couldn't create playback progress queue.");
-      this->mark_failed();
-    }
-
-    ctx.encoded_ring_buffer = SendspinAudioRingBuffer::create(this->parent_->get_buffer_size());
-    if (ctx.encoded_ring_buffer == nullptr) {
-      ESP_LOGE(TAG, "Couldn't create encoded audio ring buffer.");
-      this->mark_failed();
-    }
-
-    this->sendspin_pipelines_.push_back(std::move(ctx));
-  }
-}
-
-bool SendspinMediaSource::play_uri(const std::string &uri, size_t pipeline) {
-  if (pipeline >= this->sendspin_pipelines_.size()) {
-    ESP_LOGE(TAG, "Invalid pipeline index: %zu", pipeline);
-    return false;
-  }
-
+bool SendspinMediaSource::play_uri(const std::string &uri) {
   // Check if pipeline is already playing
-  if (this->get_state(pipeline) != media_source::MediaSourceState::IDLE) {
-    ESP_LOGE(TAG, "Cannot play '%s' on pipeline %zu: pipeline is busy", uri.c_str(), pipeline);
+  if (this->get_state() != media_source::MediaSourceState::IDLE) {
+    ESP_LOGE(TAG, "Cannot play '%s': pipeline is busy", uri.c_str());
     return false;
   }
 
@@ -124,7 +91,7 @@ bool SendspinMediaSource::play_uri(const std::string &uri, size_t pipeline) {
     return false;
   }
 
-  auto &ctx = this->sendspin_pipelines_[pipeline];
+  auto &ctx = this->pipeline_ctx_;
 
   // Queue playback start
   ControlMessage message = {.control = SourceControls::START};
@@ -136,13 +103,28 @@ bool SendspinMediaSource::play_uri(const std::string &uri, size_t pipeline) {
 void SendspinMediaSource::setup() {
   this->disable_loop();
 
+  // Create event group and queue upfront so they're available when play_uri is called
+  this->pipeline_ctx_.event_group = xEventGroupCreate();
+  this->pipeline_ctx_.controls_queue = xQueueCreate(3, sizeof(ControlMessage));
+
+  this->pipeline_ctx_.playback_progress_queue = xQueueCreateWithCaps(50, sizeof(PlaybackProgress), MALLOC_CAP_SPIRAM);
+  if (this->pipeline_ctx_.playback_progress_queue == nullptr) {
+    ESP_LOGE(TAG, "Couldn't create playback progress queue.");
+    this->mark_failed();
+  }
+
+  this->pipeline_ctx_.encoded_ring_buffer = SendspinAudioRingBuffer::create(this->parent_->get_buffer_size());
+  if (this->pipeline_ctx_.encoded_ring_buffer == nullptr) {
+    ESP_LOGE(TAG, "Couldn't create encoded audio ring buffer.");
+    this->mark_failed();
+  }
+
   // Register callbacks for volume related controls from the Sendspin
   this->parent_->add_controls_callback([this](const SendspinControls &control_type) {
     switch (control_type) {
       case SendspinControls::START:  // Intentional fallthrough
-        // TODO: This should be pipeline specific, not hardcoded to pipelone 0
-        this->sendspin_pipelines_[0].pending_start = true;
-        this->play_uri_request_callback_("sendspin://current", 0);
+        this->pipeline_ctx_.pending_start = true;
+        this->play_uri_request_callback_("sendspin://current");
         break;
       case SendspinControls::STOP: {
         // TODO: Is there really a distinction here btween STOP and CLEAR? I guess clear assumes it will resume again
@@ -155,8 +137,7 @@ void SendspinMediaSource::setup() {
         // Intentional fallthrough
       }
       case SendspinControls::CLEAR: {
-        // TODO: This should be pipeline specific, not hardcoded to pipelone 0
-        auto &ctx = this->sendspin_pipelines_[0];
+        auto &ctx = this->pipeline_ctx_;
         xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_STOP);
         // Ring buffer reset happens in TASK_STOPPED handler when consumer task is safely done
         break;
@@ -174,151 +155,129 @@ void SendspinMediaSource::setup() {
     }
   });
 
-  // TODO: This always sends it to pipeline 0!
-  this->parent_->set_audio_chunk_callback(
-      [this](const uint8_t *data, size_t data_size, int64_t timestamp, ChunkType chunk_type, TickType_t ticks_to_wait) {
-        return this->sendspin_pipelines_[0].encoded_ring_buffer->write_chunk(data, data_size, timestamp, chunk_type,
-                                                                             ticks_to_wait);
-      });
-
-  // Pipeline initialization happens via init_pipelines() called by MediaPlayer
-  // Individual pipeline resources (event groups, queues, tasks) are created on-demand in loop()
+  this->parent_->set_audio_chunk_callback([this](const uint8_t *data, size_t data_size, int64_t timestamp,
+                                                 ChunkType chunk_type, TickType_t ticks_to_wait) {
+    return this->pipeline_ctx_.encoded_ring_buffer->write_chunk(data, data_size, timestamp, chunk_type, ticks_to_wait);
+  });
 }
 
 void SendspinMediaSource::loop() {
-  // Process each pipeline's state machine
-  for (size_t pipeline = 0; pipeline < this->sendspin_pipelines_.size(); pipeline++) {
-    auto &ctx = this->sendspin_pipelines_[pipeline];
+  // Process the pipeline's state machine
+  auto &ctx = this->pipeline_ctx_;
 
-    // Process control messages for this pipeline
-    ControlMessage incoming_control;
-    if (xQueueReceive(ctx.controls_queue, &incoming_control, 0)) {
-      switch (incoming_control.control) {
-        case SourceControls::START:
-          ctx.generation_state = SendspinGenerationState::START_TASK;
-          ctx.pending_start = false;
-          break;
-        case SourceControls::STOP:
-          if (ctx.generation_state == SendspinGenerationState::GENERATING) {
-            // this->parent_->send_client_command(SendspinCommandType::STOP, std::nullopt, std::nullopt);
-            xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_STOP);
-          }
-          break;
-      }
-    }
-
-    // Process pipeline state machine
-    switch (ctx.generation_state) {
-      case SendspinGenerationState::START_TASK: {
-        // Event group and queue already created in init_pipelines()
-        // Start the task
-        if (ctx.sync_task_handle == nullptr) {
-          xEventGroupClearBits(ctx.event_group, EventGroupBits::TASK_STARTING | EventGroupBits::TASK_RUNNING |
-                                                    EventGroupBits::TASK_STOPPING | EventGroupBits::TASK_STOPPED |
-                                                    EventGroupBits::COMMAND_STOP);
-          this->parent_->update_state(SendspinClientState::SYNCHRONIZED);
-          if (ctx.sync_task_stack_buffer == nullptr) {
-            if (this->task_stack_in_psram_) {
-              RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
-              ctx.sync_task_stack_buffer = stack_allocator.allocate(SYNC_TASK_STACK_SIZE);
-            } else {
-              RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-              ctx.sync_task_stack_buffer = stack_allocator.allocate(SYNC_TASK_STACK_SIZE);
-            }
-          }
-          if (ctx.sync_task_stack_buffer == nullptr) {
-            ESP_LOGE(TAG, "Failed to allocate generate task stack for pipeline %zu", pipeline);
-            this->mark_failed();
-            return;
-          }
-
-          char task_name[32];
-          snprintf(task_name, sizeof(task_name), "Sendspin_%zu", pipeline);
-
-          auto *params = new GenerateTaskParams{this, pipeline};
-          ctx.sync_task_handle = xTaskCreateStatic(sync_task, task_name, SYNC_TASK_STACK_SIZE, params, 1,
-                                                   ctx.sync_task_stack_buffer, &ctx.sync_task_stack);
-          if (ctx.sync_task_handle == nullptr) {
-            ESP_LOGE(TAG, "Failed to create generate task for pipeline %zu", pipeline);
-            delete params;
-            this->mark_failed();
-            return;
-          }
-        }
-        ESP_LOGD(TAG, "Started generate task for pipeline %zu", pipeline);
-        ctx.generation_state = SendspinGenerationState::GENERATING;
+  // Process control messages
+  ControlMessage incoming_control;
+  if (xQueueReceive(ctx.controls_queue, &incoming_control, 0)) {
+    switch (incoming_control.control) {
+      case SourceControls::START:
+        ctx.generation_state = SendspinGenerationState::START_TASK;
+        ctx.pending_start = false;
         break;
-      }
-      case SendspinGenerationState::GENERATING: {
-        // Only state when we handle event group bits
-        EventBits_t event_bits = xEventGroupGetBits(ctx.event_group);
-
-        if (event_bits & TASK_STARTING) {
-          ESP_LOGD(TAG, "Pipeline %zu starting", pipeline);
-          xEventGroupClearBits(ctx.event_group, TASK_STARTING);
-        }
-
-        if (event_bits & TASK_RUNNING) {
-          ESP_LOGD(TAG, "Pipeline %zu running", pipeline);
-          xEventGroupClearBits(ctx.event_group, TASK_RUNNING);
-          this->set_state_(media_source::MediaSourceState::PLAYING, pipeline);
-        }
-
-        if (event_bits & TASK_STOPPING) {
-          ESP_LOGD(TAG, "Pipeline %zu stopping", pipeline);
-          xEventGroupClearBits(ctx.event_group, TASK_STOPPING);
-        }
-
-        if (event_bits & TASK_STOPPED) {
-          ESP_LOGD(TAG, "Pipeline %zu stopped", pipeline);
-          xEventGroupClearBits(ctx.event_group, TASK_STOPPED | COMMAND_STOP);
-          // Safe to reset ring buffer now that consumer task is stopped
-          ctx.encoded_ring_buffer->reset();
-
-          vTaskDelete(ctx.sync_task_handle);
-          ctx.sync_task_handle = nullptr;
-          if (ctx.sync_task_stack_buffer != nullptr) {
-            if (this->task_stack_in_psram_) {
-              RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
-              stack_allocator.deallocate(ctx.sync_task_stack_buffer, SYNC_TASK_STACK_SIZE);
-            } else {
-              RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-              stack_allocator.deallocate(ctx.sync_task_stack_buffer, SYNC_TASK_STACK_SIZE);
-            }
-            ctx.sync_task_stack_buffer = nullptr;
-          }
-          this->set_state_(media_source::MediaSourceState::IDLE, pipeline);
-          ctx.generation_state = SendspinGenerationState::IDLE;
+      case SourceControls::STOP:
+        if (ctx.generation_state == SendspinGenerationState::GENERATING) {
+          // this->parent_->send_client_command(SendspinCommandType::STOP, std::nullopt, std::nullopt);
+          xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_STOP);
         }
         break;
-      }
-      case SendspinGenerationState::IDLE: {
-        // Nothing to do when idle
-        break;
-      }
     }
   }
 
-  // Check if we should disable loop when all pipelines are idle
-  bool all_idle = true;
-  for (const auto &p : this->sendspin_pipelines_) {
-    if ((p.generation_state != SendspinGenerationState::IDLE) || uxQueueMessagesWaiting(p.controls_queue) > 0) {
-      all_idle = false;
+  // Process pipeline state machine
+  switch (ctx.generation_state) {
+    case SendspinGenerationState::START_TASK: {
+      // Event group and queue already created in setup()
+      // Start the task
+      if (ctx.sync_task_handle == nullptr) {
+        xEventGroupClearBits(ctx.event_group, EventGroupBits::TASK_STARTING | EventGroupBits::TASK_RUNNING |
+                                                  EventGroupBits::TASK_STOPPING | EventGroupBits::TASK_STOPPED |
+                                                  EventGroupBits::COMMAND_STOP);
+        this->parent_->update_state(SendspinClientState::SYNCHRONIZED);
+        if (ctx.sync_task_stack_buffer == nullptr) {
+          if (this->task_stack_in_psram_) {
+            RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
+            ctx.sync_task_stack_buffer = stack_allocator.allocate(SYNC_TASK_STACK_SIZE);
+          } else {
+            RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
+            ctx.sync_task_stack_buffer = stack_allocator.allocate(SYNC_TASK_STACK_SIZE);
+          }
+        }
+        if (ctx.sync_task_stack_buffer == nullptr) {
+          ESP_LOGE(TAG, "Failed to allocate generate task stack");
+          this->mark_failed();
+          return;
+        }
+
+        auto *params = new GenerateTaskParams{this};
+        ctx.sync_task_handle = xTaskCreateStatic(sync_task, "Sendspin", SYNC_TASK_STACK_SIZE, params, 1,
+                                                 ctx.sync_task_stack_buffer, &ctx.sync_task_stack);
+        if (ctx.sync_task_handle == nullptr) {
+          ESP_LOGE(TAG, "Failed to create generate task");
+          delete params;
+          this->mark_failed();
+          return;
+        }
+      }
+      ESP_LOGD(TAG, "Started generate task");
+      ctx.generation_state = SendspinGenerationState::GENERATING;
+      break;
+    }
+    case SendspinGenerationState::GENERATING: {
+      // Only state when we handle event group bits
+      EventBits_t event_bits = xEventGroupGetBits(ctx.event_group);
+
+      if (event_bits & TASK_STARTING) {
+        ESP_LOGD(TAG, "Pipeline starting");
+        xEventGroupClearBits(ctx.event_group, TASK_STARTING);
+      }
+
+      if (event_bits & TASK_RUNNING) {
+        ESP_LOGD(TAG, "Pipeline running");
+        xEventGroupClearBits(ctx.event_group, TASK_RUNNING);
+        this->set_state_(media_source::MediaSourceState::PLAYING);
+      }
+
+      if (event_bits & TASK_STOPPING) {
+        ESP_LOGD(TAG, "Pipeline stopping");
+        xEventGroupClearBits(ctx.event_group, TASK_STOPPING);
+      }
+
+      if (event_bits & TASK_STOPPED) {
+        ESP_LOGD(TAG, "Pipeline stopped");
+        xEventGroupClearBits(ctx.event_group, TASK_STOPPED | COMMAND_STOP);
+        // Safe to reset ring buffer now that consumer task is stopped
+        ctx.encoded_ring_buffer->reset();
+
+        vTaskDelete(ctx.sync_task_handle);
+        ctx.sync_task_handle = nullptr;
+        if (ctx.sync_task_stack_buffer != nullptr) {
+          if (this->task_stack_in_psram_) {
+            RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
+            stack_allocator.deallocate(ctx.sync_task_stack_buffer, SYNC_TASK_STACK_SIZE);
+          } else {
+            RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
+            stack_allocator.deallocate(ctx.sync_task_stack_buffer, SYNC_TASK_STACK_SIZE);
+          }
+          ctx.sync_task_stack_buffer = nullptr;
+        }
+        this->set_state_(media_source::MediaSourceState::IDLE);
+        ctx.generation_state = SendspinGenerationState::IDLE;
+      }
+      break;
+    }
+    case SendspinGenerationState::IDLE: {
+      // Nothing to do when idle
       break;
     }
   }
-  if (all_idle) {
+
+  // Check if we should disable loop when pipeline is idle
+  if ((ctx.generation_state == SendspinGenerationState::IDLE) && uxQueueMessagesWaiting(ctx.controls_queue) == 0) {
     this->disable_loop();
   }
 }
 
-void SendspinMediaSource::handle_command(media_source::MediaSourceCommand command, size_t pipeline) {
-  if (pipeline >= this->sendspin_pipelines_.size()) {
-    ESP_LOGE(TAG, "Invalid pipeline index: %zu", pipeline);
-    return;
-  }
-
-  auto &ctx = this->sendspin_pipelines_[pipeline];
+void SendspinMediaSource::handle_command(media_source::MediaSourceCommand command) {
+  auto &ctx = this->pipeline_ctx_;
   if (ctx.controls_queue == nullptr) {
     return;
   }
@@ -388,9 +347,9 @@ void SendspinMediaSource::notify_volume_changed(float volume) {
 
 void SendspinMediaSource::notify_mute_changed(bool is_muted) { this->parent_->update_muted(is_muted); }
 
-void SendspinMediaSource::notify_audio_played(uint32_t frames, int64_t timestamp, size_t pipeline) {
+void SendspinMediaSource::notify_audio_played(uint32_t frames, int64_t timestamp) {
   PlaybackProgress playback_progress = {.frames_played = frames, .finish_timestamp = timestamp};
-  if (!xQueueSend(this->sendspin_pipelines_[pipeline].playback_progress_queue, &playback_progress, 0)) {
+  if (!xQueueSend(this->pipeline_ctx_.playback_progress_queue, &playback_progress, 0)) {
     ESP_LOGE(TAG, "Playback info queue was full");
   }
 }
@@ -742,8 +701,7 @@ bool SendspinMediaSource::sync_decode_audio_(SyncContext &sync_context, Sendspin
       if (sync_context.decode_buffer == nullptr) {
         sync_context.decode_buffer = audio::AudioSinkTransferBuffer::create(needed);
         sync_context.decode_buffer->set_sink([this, &sync_context](uint8_t *data, size_t len, TickType_t ticks) {
-          return this->output_callback_(data, len, ticks, sync_context.current_stream_info,
-                                        sync_context.pipeline_index);
+          return this->output_callback_(data, len, ticks, sync_context.current_stream_info);
         });
       } else if (needed > sync_context.decode_buffer->capacity()) {
         sync_context.decode_buffer->reallocate(needed);
@@ -819,11 +777,10 @@ bool SendspinMediaSource::sync_synchronize_audio_(SyncContext &sync_context,
   return true;
 }
 
-void SendspinMediaSource::set_transfer_callbacks_(SyncContext &sync_context, int pipeline) {
-  sync_context.pipeline_index = pipeline;
+void SendspinMediaSource::set_transfer_callbacks_(SyncContext &sync_context) {
   std::function<size_t(uint8_t *, size_t, TickType_t)> wrapped_callback =
       [this, &sync_context](uint8_t *data, size_t len, TickType_t ticks) {
-        return this->output_callback_(data, len, ticks, sync_context.current_stream_info, sync_context.pipeline_index);
+        return this->output_callback_(data, len, ticks, sync_context.current_stream_info);
       };
   sync_context.interpolation_transfer_buffer->set_sink(std::move(wrapped_callback));
 }
@@ -842,10 +799,9 @@ void SendspinMediaSource::sync_task(void *params) {
 
   auto *task_params = static_cast<GenerateTaskParams *>(params);
   SendspinMediaSource *this_source = task_params->source;
-  size_t pipeline = task_params->pipeline;
   delete task_params;
 
-  auto &ctx = this_source->sendspin_pipelines_[pipeline];
+  auto &ctx = this_source->pipeline_ctx_;
 
   xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STARTING);
   {  // Ensures all C++ objects deallocate when they fall out of scope
@@ -863,7 +819,7 @@ void SendspinMediaSource::sync_task(void *params) {
     sync_context.interpolation_transfer_buffer = audio::AudioSinkTransferBuffer::create(
         sync_context.current_stream_info.ms_to_bytes(INITIAL_SYNC_ZEROS_DURATION_MS));
 
-    this_source->set_transfer_callbacks_(sync_context, pipeline);
+    this_source->set_transfer_callbacks_(sync_context);
     sync_context.decoder = std::make_unique<SendspinDecoder>();
 
     sync_context.release_chunk = true;

@@ -54,7 +54,6 @@ struct SyncContext {
   int64_t decoded_timestamp{0};                                   // Timestamp for decoded audio
   std::unique_ptr<audio::AudioSinkTransferBuffer> interpolation_transfer_buffer;
   std::unique_ptr<SendspinDecoder> decoder;
-  size_t pipeline_index;
   bool release_chunk;
   bool initial_decode;
   int64_t pending_frame_corrections;
@@ -68,7 +67,7 @@ struct SyncContext {
 // Forward declaration
 class SendspinMediaSource;
 
-/// @brief Context for a single pipeline's
+/// @brief Context for the pipeline
 struct SendspinMediaSourcePipeline {
   bool paused{false};
   bool pending_start{false};
@@ -92,7 +91,6 @@ struct SendspinMediaSourcePipeline {
 /// @brief Parameters passed to generate task
 struct GenerateTaskParams {
   SendspinMediaSource *source;
-  size_t pipeline;
 };
 
 class SendspinMediaSource : public Component, public media_source::MediaSource, public Parented<SendspinHub> {
@@ -101,14 +99,13 @@ class SendspinMediaSource : public Component, public media_source::MediaSource, 
   void loop() override;
 
   // MediaSource interface implementation
-  void init_pipelines(size_t pipeline_count) override;
-  bool play_uri(const std::string &uri, size_t pipeline) override;
-  void handle_command(media_source::MediaSourceCommand command, size_t pipeline) override;
+  bool play_uri(const std::string &uri) override;
+  void handle_command(media_source::MediaSourceCommand command) override;
   media_source::MediaSourceCapabilities get_capabilities() override;
 
   void notify_volume_changed(float volume) override;
   void notify_mute_changed(bool is_muted) override;
-  void notify_audio_played(uint32_t frames, int64_t timestamp, size_t pipeline) override;
+  void notify_audio_played(uint32_t frames, int64_t timestamp) override;
 
   // Configuration setters
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
@@ -145,9 +142,9 @@ class SendspinMediaSource : public Component, public media_source::MediaSource, 
 
   bool sync_decode_audio_(SyncContext &sync_context, SendspinMediaSourcePipeline &pipeline_context);
 
-  void set_transfer_callbacks_(SyncContext &sync_context, int pipeline);
+  void set_transfer_callbacks_(SyncContext &sync_context);
 
-  FixedVector<SendspinMediaSourcePipeline> sendspin_pipelines_;
+  SendspinMediaSourcePipeline pipeline_ctx_;
   bool task_stack_in_psram_{false};
 };
 
