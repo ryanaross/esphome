@@ -30,7 +30,7 @@ static const char *const TAG = "mdns";
 #endif
 
 #ifdef USE_SENDSPIN
-#define SENDSPIN_PORT 8927  // NOLINT
+#define SENDSPIN_PORT 8928  // NOLINT
 #endif
 
 // Define all constant strings using the macro
