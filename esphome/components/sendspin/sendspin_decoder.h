@@ -8,7 +8,6 @@
 #include "sendspin_protocol.h"
 
 #include "esphome/components/audio/audio.h"
-// #include "esphome/components/audio/audio_chunk_queue.h"
 
 #include <flac_decoder.h>
 #include <opus.h>
@@ -26,25 +25,25 @@ class SendspinDecoder {
   // Reset the state of the FLAC and Opus decoders
   void reset_decoders();
 
-  /// @brief Setups the appropriate decoder and then processs the codec header (which may be a dummy header).
-  /// @param header_chunk SendspinAudioChunk with header
-  /// @param stream_info Pointer to AudioStreamInfo that will be filled out when decoding the header
-  /// @return True if successful, false otherwise
-  bool process_header(std::shared_ptr<SendspinAudioChunk> header_chunk, audio::AudioStreamInfo *stream_info);
+  /// @brief Sets up the appropriate decoder and processes the codec header (which may be a dummy header).
+  /// @param data Pointer to the header data.
+  /// @param data_size Size of the header data in bytes.
+  /// @param chunk_type Type of header chunk.
+  /// @param stream_info Pointer to AudioStreamInfo that will be filled out when decoding the header.
+  /// @return True if successful, false otherwise.
+  bool process_header(const uint8_t *data, size_t data_size, ChunkType chunk_type, audio::AudioStreamInfo *stream_info);
 
   /// @brief Decodes an encoded audio chunk.
-  /// @param encoded_chunk SendspinAudioChunk pointer with encoded audio
-  /// @param decoded_chunk Reference to shared_ptr to store decoded audio
-  ///                      For PCM: shares the same data with new shared_ptr
-  ///                      For other codecs: new allocation
-  /// @return True if successful, false otherwise
-  bool decode_audio_chunk(std::shared_ptr<SendspinAudioChunk> encoded_chunk,
-                          std::shared_ptr<SendspinAudioChunk> &decoded_chunk);
+  /// @param data Pointer to the encoded audio data.
+  /// @param data_size Size of the encoded audio data in bytes.
+  /// @param decoded_chunk Reference to shared_ptr to store decoded audio (new allocation).
+  /// @return True if successful, false otherwise.
+  bool decode_audio_chunk(const uint8_t *data, size_t data_size, std::shared_ptr<SendspinAudioChunk> &decoded_chunk);
 
   SendspinCodecFormat get_current_codec() const { return this->current_codec_; }
 
  protected:
-  bool decode_dummy_header_(std::shared_ptr<SendspinAudioChunk> header_chunk, audio::AudioStreamInfo *stream_info);
+  bool decode_dummy_header_(const uint8_t *data, size_t data_size, audio::AudioStreamInfo *stream_info);
 
   std::unique_ptr<esp_audio_libs::flac::FLACDecoder> flac_decoder_;
   OpusDecoder *opus_decoder_{nullptr};

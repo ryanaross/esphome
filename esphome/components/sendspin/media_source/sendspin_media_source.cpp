@@ -31,9 +31,6 @@ namespace sendspin {
 // TODO: Remove this. Take out unnecessary logs and change useful ones to be VERBOSE level
 // #define SENDSPIN_MEDIA_SOURCE_DEBUG
 
-// TODO: Determine a default value - try seeing how many chunks of FLAC the server can send at the start
-static const uint32_t ENCODED_CHUNK_QUEUE_LENGTH = 100;
-
 static const uint32_t READ_WRITE_TIMEOUT_MS = 20;
 
 static const int GOOD_SYNCS_BEFORE_UNMUTE = 1;
@@ -86,13 +83,9 @@ void SendspinMediaSource::init_pipelines(size_t pipeline_count) {
       this->mark_failed();
     }
 
-    // TODO: Get max buffer size from hub
-    // (initial queue length, buffer size, dynamic growth enabled, max queue length)
-    ctx.encoded_chunk_queue =
-        audio::AudioChunkQueue::create(ENCODED_CHUNK_QUEUE_LENGTH, this->parent_->get_buffer_size(), true, 0);
-    if (ctx.encoded_chunk_queue == nullptr) {
-      // TODO: Need to actually make this function failable
-      ESP_LOGE(TAG, "Couldn't create chunk queue.");
+    ctx.encoded_ring_buffer = SendspinAudioRingBuffer::create(this->parent_->get_buffer_size());
+    if (ctx.encoded_ring_buffer == nullptr) {
+      ESP_LOGE(TAG, "Couldn't create encoded audio ring buffer.");
       this->mark_failed();
     }
 
@@ -166,7 +159,7 @@ void SendspinMediaSource::setup() {
         // TODO: This should be pipeline specific, not hardcoded to pipelone 0
         auto &ctx = this->sendspin_pipelines_[0];
         xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_STOP);
-        ctx.encoded_chunk_queue->reset();  // Reset the encoded chunk queue to clear it out
+        // Ring buffer reset happens in TASK_STOPPED handler when consumer task is safely done
         break;
       }
       case SendspinControls::VOLUME_UPDATE: {
@@ -183,14 +176,11 @@ void SendspinMediaSource::setup() {
   });
 
   // TODO: This always sends it to pipeline 0!
-  this->parent_->add_audio_chunk_callback([this](std::shared_ptr<SendspinAudioChunk> audio_chunk,
-                                                 TickType_t ticks_to_wait, const audio::AudioStreamInfo &stream_info) {
-    this->sendspin_pipelines_[0].stream_info = stream_info;
-
-    // AudioChunkQueue handles shared_ptr directly
-    return this->sendspin_pipelines_[0].encoded_chunk_queue->add_chunk(
-        std::static_pointer_cast<audio::AudioChunk>(audio_chunk), ticks_to_wait);
-  });
+  this->parent_->set_audio_chunk_callback(
+      [this](const uint8_t *data, size_t data_size, int64_t timestamp, ChunkType chunk_type, TickType_t ticks_to_wait) {
+        return this->sendspin_pipelines_[0].encoded_ring_buffer->write_chunk(data, data_size, timestamp, chunk_type,
+                                                                             ticks_to_wait);
+      });
 
   // Pipeline initialization happens via init_pipelines() called by MediaPlayer
   // Individual pipeline resources (event groups, queues, tasks) are created on-demand in loop()
@@ -283,6 +273,8 @@ void SendspinMediaSource::loop() {
         if (event_bits & TASK_STOPPED) {
           ESP_LOGD(TAG, "Pipeline %zu stopped", pipeline);
           xEventGroupClearBits(ctx.event_group, TASK_STOPPED | COMMAND_STOP);
+          // Safe to reset ring buffer now that consumer task is stopped
+          ctx.encoded_ring_buffer->reset();
 
           vTaskDelete(ctx.sync_task_handle);
           ctx.sync_task_handle = nullptr;
@@ -449,24 +441,13 @@ bool SendspinMediaSource::sync_transfer_audio_(SyncContext &sync_context) {
 
 bool SendspinMediaSource::sync_load_next_chunk_(SyncContext &sync_context,
                                                 SendspinMediaSourcePipeline &pipeline_context) {
-  if (sync_context.encoded_chunk == nullptr) {
-    auto chunk = pipeline_context.encoded_chunk_queue->receive_chunk(pdMS_TO_TICKS(15));
-    if (!chunk) {
+  if (sync_context.encoded_entry == nullptr) {
+    sync_context.encoded_entry = pipeline_context.encoded_ring_buffer->receive_chunk(pdMS_TO_TICKS(15));
+    if (sync_context.encoded_entry == nullptr) {
       // No chunk available to process
       return false;
     }
-    sync_context.encoded_chunk = std::static_pointer_cast<SendspinAudioChunk>(chunk);
   }
-
-  // if (esp_timer_get_time() - sync_context.encoded_chunk->timestamp > 0) {
-  //   // Chunk was already supposed to play, skip it!
-  //   ESP_LOGE(TAG, "Chunk was already supposed to play at %" PRId64 " and its %" PRId64 ", so skipping it",
-  //            sync_context.encoded_chunk->timestamp, esp_timer_get_time());
-  //   sync_context.encoded_chunk = nullptr;  // shared_ptr automatically handles cleanup
-  //   sync_context.release_chunk = false;
-  //   pipeline_context.encoded_chunk_queue->reset();  // We are way behind, so drop any pending audio
-  //   return false;
-  // }
 
   return true;
 }
@@ -727,7 +708,11 @@ void SendspinMediaSource::sync_soft_reset_(SyncContext &sync_context, SendspinMe
   sync_context.synced_chunks = 0;
   sync_context.temporary_hard_sync_threshold = HARD_SYNC_THRESHOLD_US;
 
-  sync_context.encoded_chunk = nullptr;
+  // Return any borrowed ring buffer entry before resetting
+  if (sync_context.encoded_entry != nullptr) {
+    pipeline_context.encoded_ring_buffer->return_chunk(sync_context.encoded_entry);
+    sync_context.encoded_entry = nullptr;
+  }
   sync_context.decoded_chunk = nullptr;
   sync_context.release_chunk = true;
 
@@ -740,12 +725,13 @@ bool SendspinMediaSource::sync_decode_audio_(SyncContext &sync_context, Sendspin
     return true;
   }
 
-  if ((sync_context.encoded_chunk->chunk_type != CHUNK_TYPE_ENCODED_AUDIO) &&
-      (sync_context.encoded_chunk->chunk_type != CHUNK_TYPE_DECODED_AUDIO)) {
+  if ((sync_context.encoded_entry->chunk_type != CHUNK_TYPE_ENCODED_AUDIO) &&
+      (sync_context.encoded_entry->chunk_type != CHUNK_TYPE_DECODED_AUDIO)) {
     // New codec header
     sync_context.decoder->reset_decoders();
     audio::AudioStreamInfo decoded_stream_info;
-    if (!sync_context.decoder->process_header(sync_context.encoded_chunk, &decoded_stream_info)) {
+    if (!sync_context.decoder->process_header(sync_context.encoded_entry->data(), sync_context.encoded_entry->data_size,
+                                              sync_context.encoded_entry->chunk_type, &decoded_stream_info)) {
       ESP_LOGE(TAG, "Failed to process audio codec header");
     } else {
       ESP_LOGI(TAG, "Processed new codec header");
@@ -755,28 +741,30 @@ bool SendspinMediaSource::sync_decode_audio_(SyncContext &sync_context, Sendspin
       }
     }
   } else if ((sync_context.decoder->get_current_codec() != SendspinCodecFormat::UNSUPPORTED) &&
-             (sync_context.encoded_chunk->chunk_type == CHUNK_TYPE_ENCODED_AUDIO)) {
-    int64_t client_timestamp = this->parent_->get_client_time(sync_context.encoded_chunk->timestamp);
+             (sync_context.encoded_entry->chunk_type == CHUNK_TYPE_ENCODED_AUDIO)) {
+    int64_t client_timestamp = this->parent_->get_client_time(sync_context.encoded_entry->timestamp);
     int64_t time_until_playback_us = client_timestamp - esp_timer_get_time();
     // TODO: Don't hardcode 400 ms margin when first starting up, we can measure latency for future runs
     // We should also track how much audio we have buffered after the initial decode has happened, and use that to skip
     // some chunks if needed.
     if (time_until_playback_us < sync_context.initial_decode * 400000) {
       // Chunk was already supposed to play, skip it!
-      sync_context.encoded_chunk = nullptr;  // shared_ptr automatically handles cleanup
+      pipeline_context.encoded_ring_buffer->return_chunk(sync_context.encoded_entry);
+      sync_context.encoded_entry = nullptr;
       return false;
     }
 
-    if (!sync_context.decoder->decode_audio_chunk(sync_context.encoded_chunk, sync_context.decoded_chunk)) {
+    if (!sync_context.decoder->decode_audio_chunk(sync_context.encoded_entry->data(),
+                                                  sync_context.encoded_entry->data_size, sync_context.decoded_chunk)) {
       ESP_LOGE(TAG, "Failed to decode audio chunk");
     } else {
       sync_context.decoded_chunk->timestamp = client_timestamp;
     }
   }
 
-  // Clear the encoded chunk. Note, for PCM, decoded_chunk is the same data as encoded_chunk but has its own
-  // shared_ptr reference
-  sync_context.encoded_chunk = nullptr;
+  // Return the encoded entry to the ring buffer
+  pipeline_context.encoded_ring_buffer->return_chunk(sync_context.encoded_entry);
+  sync_context.encoded_entry = nullptr;
 
   return true;
 }
@@ -856,6 +844,12 @@ void SendspinMediaSource::sync_task(void *params) {
   xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STARTING);
   {  // Ensures all C++ objects deallocate when they fall out of scope
     SyncContext sync_context;
+    // Set stream_info from hub's current stream parameters
+    auto &params = this_source->parent_->get_current_stream_params();
+    if (params.bit_depth.has_value() && params.channels.has_value() && params.sample_rate.has_value()) {
+      ctx.stream_info =
+          audio::AudioStreamInfo(params.bit_depth.value(), params.channels.value(), params.sample_rate.value());
+    }
     sync_context.current_stream_info = ctx.stream_info;
     sync_context.bytes_per_frame = sync_context.current_stream_info.frames_to_bytes(1);
 
@@ -946,11 +940,6 @@ void SendspinMediaSource::sync_task(void *params) {
           break;
       }
 #ifdef SENDSPIN_MEDIA_SOURCE_DEBUG
-      // TODO: Remove these debug checks/logging
-      if (ctx.encoded_chunk_queue->size() == 1) {
-        ESP_LOGW(TAG, "Potential buffer underflow incoming");
-      }
-
       static uint32_t high_water_mark = SYNC_TASK_STACK_SIZE;
       uint32_t new_high_water_mark = uxTaskGetStackHighWaterMark(nullptr);
       if (new_high_water_mark < high_water_mark) {
@@ -958,6 +947,12 @@ void SendspinMediaSource::sync_task(void *params) {
         high_water_mark = new_high_water_mark;
       }
 #endif
+    }
+
+    // Return any borrowed ring buffer entry before leaving scope
+    if (sync_context.encoded_entry != nullptr) {
+      ctx.encoded_ring_buffer->return_chunk(sync_context.encoded_entry);
+      sync_context.encoded_entry = nullptr;
     }
 
     xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STOPPING);

@@ -32,9 +32,8 @@ struct SendspinAudioChunk : public audio::AudioChunk {
   // Add any other sendspin-specific fields here in the future
 };
 
-// Factory functions for creating SendspinAudioChunks (for use with AudioChunkQueue)
+// Factory function for creating SendspinAudioChunks
 std::shared_ptr<SendspinAudioChunk> create_sendspin_chunk(size_t data_size);
-std::shared_ptr<SendspinAudioChunk> create_sendspin_chunk_from_buffer(uint8_t *existing_buffer, size_t buffer_size);
 
 }  // namespace sendspin
 }  // namespace esphome
