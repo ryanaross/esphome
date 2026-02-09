@@ -89,6 +89,7 @@ bool SendspinDecoder::process_header(const uint8_t *data, size_t data_size, Chun
       }
       this->current_stream_info_ = *stream_info;
       this->current_codec_ = SendspinCodecFormat::PCM;
+      this->maximum_decoded_size_ = stream_info->ms_to_bytes(120);  // PCM max chunk size
       break;
     }
     default: {
@@ -100,72 +101,47 @@ bool SendspinDecoder::process_header(const uint8_t *data, size_t data_size, Chun
   return true;
 }
 
-bool SendspinDecoder::decode_audio_chunk(const uint8_t *data, size_t data_size,
-                                         std::shared_ptr<SendspinAudioChunk> &decoded_chunk) {
-  if (data == nullptr || data_size == 0) {
+bool SendspinDecoder::decode_audio_chunk(const uint8_t *data, size_t data_size, uint8_t *output_buffer,
+                                         size_t output_buffer_size, size_t *decoded_size) {
+  if (data == nullptr || data_size == 0 || output_buffer == nullptr || decoded_size == nullptr) {
     ESP_LOGE(TAG, "Invalid data passed to decode_audio_chunk");
     return false;
   }
 
-  // Always allocate a new chunk for decoded output
   if (this->current_codec_ == SendspinCodecFormat::PCM) {
-    // For PCM, copy data into a new chunk (source is ring buffer, not persistent)
-    decoded_chunk = create_sendspin_chunk(data_size);
-    if (decoded_chunk == nullptr) {
-      ESP_LOGE(TAG, "Failed to allocate space for PCM audio");
+    if (data_size > output_buffer_size) {
+      ESP_LOGE(TAG, "PCM data size %zu exceeds output buffer size %zu", data_size, output_buffer_size);
       return false;
     }
-    std::memcpy(decoded_chunk->get_data(), data, data_size);
-    decoded_chunk->offset = 0;
-    decoded_chunk->size = data_size;
+    std::memcpy(output_buffer, data, data_size);
+    *decoded_size = data_size;
+  } else if ((this->flac_decoder_ != nullptr) && (this->current_codec_ == SendspinCodecFormat::FLAC)) {
+    uint32_t output_samples = 0;
+    auto result = this->flac_decoder_->decode_frame(data, data_size, output_buffer, &output_samples);
+
+    if (result == esp_audio_libs::flac::FLAC_DECODER_ERROR_OUT_OF_DATA) {
+      ESP_LOGE(TAG, "FLAC decoder ran out of data");
+      return false;
+    }
+
+    if (result > esp_audio_libs::flac::FLAC_DECODER_ERROR_OUT_OF_DATA) {
+      ESP_LOGE(TAG, "Serious error decoding FLAC file");
+      return false;
+    }
+
+    *decoded_size = this->current_stream_info_.samples_to_bytes(output_samples);
+  } else if ((this->opus_decoder_ != nullptr) && (this->current_codec_ == SendspinCodecFormat::OPUS)) {
+    int output_frames = opus_decode(this->opus_decoder_, data, data_size, (int16_t *) output_buffer,
+                                    this->current_stream_info_.bytes_to_frames(output_buffer_size), 0);
+    if (output_frames < 0) {
+      ESP_LOGE(TAG, "Error decoding opus chunk: %d", output_frames);
+      return false;
+    }
+
+    *decoded_size = this->current_stream_info_.frames_to_bytes(output_frames);
   } else {
-    // For other codecs, allocate new chunk and decode
-    decoded_chunk = create_sendspin_chunk(this->maximum_decoded_size_);
-    if (decoded_chunk == nullptr) {
-      ESP_LOGE(TAG, "Failed to allocate space for decoded audio");
-      return false;
-    }
-
-    if ((this->flac_decoder_ != nullptr) && (this->current_codec_ == SendspinCodecFormat::FLAC)) {
-      uint32_t output_samples = 0;
-      auto result = this->flac_decoder_->decode_frame(data, data_size, decoded_chunk->get_data(), &output_samples);
-
-      if (result == esp_audio_libs::flac::FLAC_DECODER_ERROR_OUT_OF_DATA) {
-        ESP_LOGE(TAG, "FLAC decoder ran out of data");
-        decoded_chunk = nullptr;
-        return false;
-      }
-
-      if (result > esp_audio_libs::flac::FLAC_DECODER_ERROR_OUT_OF_DATA) {
-        ESP_LOGE(TAG, "Serious error decoding FLAC file");
-        decoded_chunk = nullptr;
-        return false;
-      }
-
-      decoded_chunk->offset = 0;
-      decoded_chunk->size = this->current_stream_info_.samples_to_bytes(output_samples);
-      // Try to shrink buffer to save memory (only works if we're the sole owner)
-      audio::shrink_audio_chunk_buffer(decoded_chunk);
-    } else if ((this->opus_decoder_ != nullptr) && (this->current_codec_ == SendspinCodecFormat::OPUS)) {
-      int output_frames = opus_decode(this->opus_decoder_, data, data_size, (int16_t *) decoded_chunk->get_data(),
-                                      this->current_stream_info_.bytes_to_frames(this->maximum_decoded_size_), 0);
-      if (output_frames < 0) {
-        ESP_LOGE(TAG, "Error decoding opus chunk: %d", output_frames);
-        decoded_chunk = nullptr;
-        return false;
-      }
-
-      decoded_chunk->offset = 0;
-      decoded_chunk->size = this->current_stream_info_.frames_to_bytes(output_frames);
-      // Try to shrink buffer to save memory (only works if we're the sole owner)
-      audio::shrink_audio_chunk_buffer(decoded_chunk);
-    } else {
-      decoded_chunk = nullptr;
-      return false;
-    }
+    return false;
   }
-
-  decoded_chunk->chunk_type = CHUNK_TYPE_DECODED_AUDIO;
 
   return true;
 }

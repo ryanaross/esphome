@@ -4,9 +4,7 @@
 
 #if defined(USE_ESP_IDF) && defined(USE_SENDSPIN_PLAYER)
 
-#include "esphome/components/audio/audio_chunk.h"
-
-#include <memory>
+#include <cstdint>
 
 namespace esphome {
 namespace sendspin {
@@ -24,16 +22,6 @@ struct DummyHeader {
   uint8_t bits_per_sample;
   uint8_t channels;
 };
-
-// Sendspin-specific audio chunk with additional metadata
-struct SendspinAudioChunk : public audio::AudioChunk {
-  int64_t timestamp{0};  // Timestamp when this part of the stream was recorded
-  ChunkType chunk_type;  // Describes the audio codec header in this packet
-  // Add any other sendspin-specific fields here in the future
-};
-
-// Factory function for creating SendspinAudioChunks
-std::shared_ptr<SendspinAudioChunk> create_sendspin_chunk(size_t data_size);
 
 }  // namespace sendspin
 }  // namespace esphome

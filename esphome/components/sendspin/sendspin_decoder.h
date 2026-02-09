@@ -4,7 +4,7 @@
 
 #if defined(USE_ESP_IDF) && defined(USE_SENDSPIN_PLAYER)
 
-#include "sendspin_audio_chunk.h"
+#include "sendspin_audio_chunk.h"  // For ChunkType and DummyHeader
 #include "sendspin_protocol.h"
 
 #include "esphome/components/audio/audio.h"
@@ -33,12 +33,17 @@ class SendspinDecoder {
   /// @return True if successful, false otherwise.
   bool process_header(const uint8_t *data, size_t data_size, ChunkType chunk_type, audio::AudioStreamInfo *stream_info);
 
-  /// @brief Decodes an encoded audio chunk.
+  /// @brief Decodes an encoded audio chunk into a caller-provided buffer.
   /// @param data Pointer to the encoded audio data.
   /// @param data_size Size of the encoded audio data in bytes.
-  /// @param decoded_chunk Reference to shared_ptr to store decoded audio (new allocation).
+  /// @param output_buffer Pointer to the buffer where decoded audio will be written.
+  /// @param output_buffer_size Size of the output buffer in bytes.
+  /// @param decoded_size Pointer to store the number of decoded bytes written.
   /// @return True if successful, false otherwise.
-  bool decode_audio_chunk(const uint8_t *data, size_t data_size, std::shared_ptr<SendspinAudioChunk> &decoded_chunk);
+  bool decode_audio_chunk(const uint8_t *data, size_t data_size, uint8_t *output_buffer, size_t output_buffer_size,
+                          size_t *decoded_size);
+
+  size_t get_maximum_decoded_size() const { return this->maximum_decoded_size_; }
 
   SendspinCodecFormat get_current_codec() const { return this->current_codec_; }
 

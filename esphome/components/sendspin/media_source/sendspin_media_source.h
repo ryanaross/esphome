@@ -4,7 +4,6 @@
 
 #if defined(USE_SENDSPIN_PLAYER)
 
-#include "esphome/components/sendspin/sendspin_audio_chunk.h"
 #include "esphome/components/sendspin/sendspin_audio_ring_buffer.h"
 #include "esphome/components/sendspin/sendspin_hub.h"
 
@@ -49,12 +48,13 @@ enum class SendspinGenerationState : uint8_t {
 // Stores all the variables need by segments of the sync task
 struct SyncContext {
   AudioRingBufferEntry *encoded_entry{nullptr};
-  std::shared_ptr<SendspinAudioChunk> decoded_chunk;
   audio::AudioStreamInfo current_stream_info;
   size_t bytes_per_frame;
-  std::unique_ptr<audio::AudioSinkTransferBuffer> output_transfer_buffer;
+  std::unique_ptr<audio::AudioSinkTransferBuffer> decode_buffer;  // Reusable decode + output buffer
+  int64_t decoded_timestamp{0};                                   // Timestamp for decoded audio
   std::unique_ptr<audio::AudioSinkTransferBuffer> interpolation_transfer_buffer;
   std::unique_ptr<SendspinDecoder> decoder;
+  size_t pipeline_index;
   bool release_chunk;
   bool initial_decode;
   int64_t pending_frame_corrections;
