@@ -4,6 +4,7 @@
 #include "esphome/core/defines.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/macros.h"
+#include <atomic>
 #include <span>
 
 #ifdef USE_SENSOR
@@ -47,7 +48,11 @@ class DebugComponent : public PollingComponent {
   void set_loop_time_sensor(sensor::Sensor *loop_time_sensor) { loop_time_sensor_ = loop_time_sensor; }
 #ifdef USE_ESP32
   void set_psram_sensor(sensor::Sensor *psram_sensor) { this->psram_sensor_ = psram_sensor; }
+  void set_cpu_idle_sensor(sensor::Sensor *cpu_idle_sensor) { this->cpu_idle_sensor_ = cpu_idle_sensor; }
   void set_log_cpu_usage(bool log_cpu_usage) { this->log_cpu_usage_ = log_cpu_usage; }
+  bool get_log_cpu_usage() const { return this->log_cpu_usage_; }
+  std::atomic<float> *get_cpu_idle_pct_ptr() { return &this->cpu_idle_percentage_; }
+  static void stats_task_(void *arg);
 #endif  // USE_ESP32
   void set_cpu_frequency_sensor(sensor::Sensor *cpu_frequency_sensor) {
     this->cpu_frequency_sensor_ = cpu_frequency_sensor;
@@ -74,6 +79,8 @@ class DebugComponent : public PollingComponent {
   sensor::Sensor *loop_time_sensor_{nullptr};
 #ifdef USE_ESP32
   sensor::Sensor *psram_sensor_{nullptr};
+  sensor::Sensor *cpu_idle_sensor_{nullptr};
+  std::atomic<float> cpu_idle_percentage_{NAN};
   bool log_cpu_usage_;
 #endif  // USE_ESP32
   sensor::Sensor *cpu_frequency_sensor_{nullptr};

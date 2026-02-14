@@ -14,6 +14,7 @@ from esphome.const import (
     PLATFORM_BK72XX,
     PLATFORM_LN882X,
     PLATFORM_RTL87XX,
+    STATE_CLASS_MEASUREMENT,
     UNIT_BYTES,
     UNIT_HERTZ,
     UNIT_MILLISECOND,
@@ -28,6 +29,7 @@ from . import (  # noqa: F401  pylint: disable=unused-import
 
 DEPENDENCIES = ["debug"]
 
+CONF_CPU_IDLE = "cpu_idle"
 CONF_MIN_FREE = "min_free"
 CONF_PSRAM = "psram"
 
@@ -98,6 +100,16 @@ CONFIG_SCHEMA = {
             entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
         ),
     ),
+    cv.Optional(CONF_CPU_IDLE): cv.All(
+        cv.only_on_esp32,
+        sensor.sensor_schema(
+            unit_of_measurement=UNIT_PERCENT,
+            icon="mdi:cpu-32-bit",
+            accuracy_decimals=1,
+            entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+            state_class=STATE_CLASS_MEASUREMENT,
+        ),
+    ),
 }
 
 
@@ -131,3 +143,11 @@ async def to_code(config):
     if cpu_freq_conf := config.get(CONF_CPU_FREQUENCY):
         sens = await sensor.new_sensor(cpu_freq_conf)
         cg.add(debug_component.set_cpu_frequency_sensor(sens))
+
+    if cpu_idle_conf := config.get(CONF_CPU_IDLE):
+        from esphome.components import esp32
+
+        esp32.add_idf_sdkconfig_option("CONFIG_FREERTOS_USE_TRACE_FACILITY", True)
+        esp32.add_idf_sdkconfig_option("CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS", True)
+        sens = await sensor.new_sensor(cpu_idle_conf)
+        cg.add(debug_component.set_cpu_idle_sensor(sens))

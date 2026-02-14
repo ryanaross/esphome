@@ -6,6 +6,7 @@
 #include "esphome/core/hal.h"
 #include <esp_sleep.h>
 
+#include <cmath>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <esp_chip_info.h>
@@ -20,14 +21,12 @@
 #if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/semphr.h"
 
-static const UBaseType_t STATS_TASK_PRIORIY = 3;
+static const UBaseType_t STATS_TASK_PRIORITY = 3;
 static const uint32_t STATS_DELAY_MS = 5000;
-static const uint32_t ARRAY_SIZE_OFFSET = 5;  // Increase this if print_real_time_stats returns ESP_ERR_INVALID_SIZE
-static const uint32_t FREERTOS_NUMBER_OF_CORES = 2;
+static const uint32_t ARRAY_SIZE_OFFSET = 5;  // Increase this if compute_real_time_stats returns ESP_ERR_INVALID_SIZE
 
-static esp_err_t print_real_time_stats(TickType_t xTicksToWait) {
+static esp_err_t compute_real_time_stats(TickType_t xTicksToWait, bool print_stats, std::atomic<float> *idle_pct_out) {
   TaskStatus_t *start_array = nullptr, *end_array = nullptr;
   UBaseType_t start_array_size, end_array_size;
   uint32_t start_run_time, end_run_time;
@@ -81,7 +80,12 @@ static esp_err_t print_real_time_stats(TickType_t xTicksToWait) {
     return ret;
   }
 
-  printf("| Task | Run Time | Percentage\n");
+  uint32_t num_cores = portNUM_PROCESSORS;
+  uint32_t idle_total_time = 0;
+
+  if (print_stats) {
+    printf("| Task | Run Time | Percentage\n");
+  }
   // Match each task in start_array to those in the end_array
   for (int i = 0; i < start_array_size; i++) {
     int k = -1;
@@ -97,42 +101,42 @@ static esp_err_t print_real_time_stats(TickType_t xTicksToWait) {
     // Check if matching task found
     if (k >= 0) {
       uint32_t task_elapsed_time = end_array[k].ulRunTimeCounter - start_array[i].ulRunTimeCounter;
-      uint32_t percentage_time = (task_elapsed_time * 100UL) / (total_elapsed_time * FREERTOS_NUMBER_OF_CORES);
-      printf("| %s | %" PRIu32 " | %" PRIu32 "%%\n", start_array[i].pcTaskName, task_elapsed_time, percentage_time);
+      uint32_t percentage_time = (task_elapsed_time * 100UL) / (total_elapsed_time * num_cores);
+      if (print_stats) {
+        printf("| %s | %" PRIu32 " | %" PRIu32 "%%\n", start_array[i].pcTaskName, task_elapsed_time, percentage_time);
+      }
+
+      // Accumulate idle task runtime (matches "IDLE", "IDLE0", "IDLE1")
+      if (strncmp(start_array[i].pcTaskName, "IDLE", 4) == 0) {
+        idle_total_time += task_elapsed_time;
+      }
     }
   }
 
-  // Print unmatched tasks
-  for (int i = 0; i < start_array_size; i++) {
-    if (start_array[i].xHandle != NULL) {
-      printf("| %s | Deleted\n", start_array[i].pcTaskName);
-    }
+  // Store idle percentage for sensor
+  if (idle_pct_out != nullptr) {
+    float idle_pct = (idle_total_time * 100.0f) / (total_elapsed_time * num_cores);
+    idle_pct_out->store(idle_pct, std::memory_order_relaxed);
   }
-  for (int i = 0; i < end_array_size; i++) {
-    if (end_array[i].xHandle != NULL) {
-      printf("| %s | Created\n", end_array[i].pcTaskName);
+
+  if (print_stats) {
+    // Print unmatched tasks
+    for (int i = 0; i < start_array_size; i++) {
+      if (start_array[i].xHandle != NULL) {
+        printf("| %s | Deleted\n", start_array[i].pcTaskName);
+      }
+    }
+    for (int i = 0; i < end_array_size; i++) {
+      if (end_array[i].xHandle != NULL) {
+        printf("| %s | Created\n", end_array[i].pcTaskName);
+      }
     }
   }
   ret = ESP_OK;
 
-  // exit:  // Common return path
   free(start_array);
   free(end_array);
   return ret;
-}
-
-static void stats_task(void *arg) {
-  // Print real time stats periodically
-  while (1) {
-    printf("\n\nGetting real time stats over %" PRIu32 " ms\n", STATS_DELAY_MS);
-    esp_err_t err = print_real_time_stats(pdMS_TO_TICKS(STATS_DELAY_MS));
-    if (err == ESP_OK) {
-      printf("Real time stats obtained\n");
-    } else {
-      printf("Error getting real time stats\n");
-      printf("Error: %s", esp_err_to_name(err));
-    }
-  }
 }
 #endif  // CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 
@@ -235,11 +239,37 @@ const char *DebugComponent::get_wakeup_cause_(std::span<char, RESET_REASON_BUFFE
 
 void DebugComponent::setup() {
 #if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
-  if (this->log_cpu_usage_) {
-    xTaskCreate(stats_task, "stats", 4096, nullptr, STATS_TASK_PRIORIY, nullptr);
+  bool need_stats_task = this->log_cpu_usage_;
+#ifdef USE_SENSOR
+  need_stats_task = need_stats_task || (this->cpu_idle_sensor_ != nullptr);
+#endif
+  if (need_stats_task) {
+    xTaskCreate(DebugComponent::stats_task_, "stats", 4096, this, STATS_TASK_PRIORITY, nullptr);
   }
 #endif  // CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 }
+
+#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+void DebugComponent::stats_task_(void *arg) {
+  auto *component = static_cast<DebugComponent *>(arg);
+  bool print_stats = component->get_log_cpu_usage();
+  std::atomic<float> *idle_pct = component->get_cpu_idle_pct_ptr();
+
+  while (1) {
+    if (print_stats) {
+      printf("\n\nGetting real time stats over %" PRIu32 " ms\n", STATS_DELAY_MS);
+    }
+    esp_err_t err = compute_real_time_stats(pdMS_TO_TICKS(STATS_DELAY_MS), print_stats, idle_pct);
+    if (print_stats) {
+      if (err == ESP_OK) {
+        printf("Real time stats obtained\n");
+      } else {
+        printf("Error getting real time stats: %s\n", esp_err_to_name(err));
+      }
+    }
+  }
+}
+#endif  // CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
 
 void DebugComponent::log_partition_info_() {
   ESP_LOGCONFIG(TAG,
@@ -379,6 +409,12 @@ void DebugComponent::update_platform_() {
   }
   if (this->psram_sensor_ != nullptr) {
     this->psram_sensor_->publish_state(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+  }
+  if (this->cpu_idle_sensor_ != nullptr) {
+    float idle_pct = this->cpu_idle_percentage_.load(std::memory_order_relaxed);
+    if (!std::isnan(idle_pct)) {
+      this->cpu_idle_sensor_->publish_state(idle_pct);
+    }
   }
 #endif
 }
