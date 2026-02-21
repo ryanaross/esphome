@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_ESP_IDF
+
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/media_source/media_source.h"
 #include "esphome/core/component.h"
@@ -63,6 +65,7 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
   bool play_uri(const std::string &uri) override;
   void handle_command(media_source::MediaSourceCommand command) override;
   media_source::MediaSourceCapabilities get_capabilities() override;
+  bool can_handle(const std::string &uri) const override { return uri.starts_with("color-noise://"); }
 
   // Configuration setters
   void set_sample_rate(uint32_t sample_rate) { this->sample_rate_ = sample_rate; }
@@ -104,3 +107,5 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
 
 }  // namespace color_noise
 }  // namespace esphome
+
+#endif

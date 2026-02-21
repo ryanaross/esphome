@@ -109,13 +109,13 @@ class MediaSource {
   /// @return Current state of this source
   MediaSourceState get_state() const { return this->state_; }
 
-  // === Configuration ===
+  // === URI Matching ===
 
-  /// @brief Set the URI prefix this source handles (e.g., "file://", "http://")
-  void set_uri_prefix(const std::string &prefix) { this->uri_prefix_ = prefix; }
-
-  /// @brief Get the URI prefix this source handles
-  const std::string &get_uri_prefix() const { return this->uri_prefix_; }
+  /// @brief Check if this source can handle the given URI
+  /// Each source must override this to match its supported URI scheme(s).
+  /// @param uri The URI to check
+  /// @return true if this source can handle the URI
+  virtual bool can_handle(const std::string &uri) const = 0;
 
   // === Listener: Source → Player ===
 
@@ -159,7 +159,6 @@ class MediaSource {
     }
   }
 
-  std::string uri_prefix_;
   MediaSourceState state_{MediaSourceState::IDLE};
   MediaSourceListener *listener_{nullptr};
 };

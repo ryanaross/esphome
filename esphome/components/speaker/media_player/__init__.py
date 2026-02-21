@@ -172,14 +172,14 @@ def _read_audio_file_and_type(file_config):
         )
 
     media_file_type = audio.AUDIO_FILE_TYPE_ENUM["NONE"]
-    if file_type in ("wav"):
+    if file_type == "wav":
         media_file_type = audio.AUDIO_FILE_TYPE_ENUM["WAV"]
     elif file_type in ("mp3", "mpeg", "mpga"):
         media_file_type = audio.AUDIO_FILE_TYPE_ENUM["MP3"]
-    elif file_type in ("flac"):
+    elif file_type == "flac":
         media_file_type = audio.AUDIO_FILE_TYPE_ENUM["FLAC"]
     elif (
-        file_type in ("ogg")
+        file_type == "ogg"
         and len(data) >= 36
         and data.startswith(b"OggS")
         and data[28:36] == b"OpusHead"

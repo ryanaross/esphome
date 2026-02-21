@@ -31,7 +31,6 @@ async def to_code(config):
     await cg.register_component(var, config)
     await media_source.register_media_source(var, config)
 
-    cg.add(var.set_uri_prefix("color-noise"))
     cg.add(var.set_sample_rate(config[CONF_SAMPLE_RATE]))
 
     if CONF_DEFAULT_SEED in config:

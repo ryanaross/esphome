@@ -55,13 +55,13 @@ void SpeakerSourceMediaPlayer::setup() {
   ESP_LOGI(TAG, "Set up speaker media player with %zu pipeline(s)", pipeline_count);
 }
 
-void SpeakerSourceMediaPlayer::set_playlist_delay_ms(size_t pipeline, uint32_t delay_ms) {
+void SpeakerSourceMediaPlayer::set_playlist_delay_ms(uint8_t pipeline, uint32_t delay_ms) {
   if (pipeline < this->pipelines_.size()) {
     this->pipelines_[pipeline].playlist_delay_ms = delay_ms;
   }
 }
 
-size_t SpeakerSourceMediaPlayer::find_pipeline_for_source_(media_source::MediaSource *source) const {
+uint8_t SpeakerSourceMediaPlayer::find_pipeline_for_source_(media_source::MediaSource *source) const {
   for (size_t i = 0; i < this->pipelines_.size(); i++) {
     if (this->pipelines_[i].active_source == source || this->pipelines_[i].pending_source == source ||
         this->pipelines_[i].stopping_source == source) {
@@ -71,7 +71,7 @@ size_t SpeakerSourceMediaPlayer::find_pipeline_for_source_(media_source::MediaSo
   return MEDIA_PIPELINE;  // fallback
 }
 
-void SpeakerSourceMediaPlayer::handle_speaker_playback_callback_(uint32_t frames, int64_t timestamp, size_t pipeline) {
+void SpeakerSourceMediaPlayer::handle_speaker_playback_callback_(uint32_t frames, int64_t timestamp, uint8_t pipeline) {
   PipelineState &ps = this->pipelines_[pipeline];
 
   // Copy pointer to local variable to avoid TOCTOU race
@@ -107,7 +107,7 @@ void SpeakerSourceMediaPlayer::on_mute_request(media_source::MediaSource *source
 void SpeakerSourceMediaPlayer::on_play_uri_request(media_source::MediaSource *source, const std::string &uri) {
   // Smart source is requesting the player to play a different URI
   // Determine pipeline from the requesting source
-  size_t pipeline = this->find_pipeline_for_source_(source);
+  uint8_t pipeline = this->find_pipeline_for_source_(source);
 
   auto call = this->make_call();
   call.set_media_url(uri);
@@ -123,7 +123,7 @@ void SpeakerSourceMediaPlayer::on_capabilities_changed(media_source::MediaSource
 void SpeakerSourceMediaPlayer::on_media_state_changed(media_source::MediaSource *source,
                                                       media_source::MediaSourceState state) {
   // Find which pipeline this source belongs to
-  size_t pipeline = this->find_pipeline_for_source_(source);
+  uint8_t pipeline = this->find_pipeline_for_source_(source);
   PipelineState &ps = this->pipelines_[pipeline];
 
   if (state == media_source::MediaSourceState::IDLE) {
@@ -166,7 +166,7 @@ void SpeakerSourceMediaPlayer::on_media_state_changed(media_source::MediaSource 
 
 size_t SpeakerSourceMediaPlayer::on_media_output(media_source::MediaSource *source, uint8_t *data, size_t length,
                                                  TickType_t ticks, audio::AudioStreamInfo stream_info) {
-  size_t pipeline = this->find_pipeline_for_source_(source);
+  uint8_t pipeline = this->find_pipeline_for_source_(source);
   PipelineState &ps = this->pipelines_[pipeline];
 
   if (!ps.is_configured()) {
@@ -303,8 +303,7 @@ void SpeakerSourceMediaPlayer::loop() {
 
 media_source::MediaSource *SpeakerSourceMediaPlayer::find_source_for_uri_(const std::string &uri) {
   for (auto &source : this->media_sources_) {
-    const std::string &prefix = source->get_uri_prefix();
-    if (uri.starts_with(prefix)) {
+    if (source->can_handle(uri)) {
       // Check if this source is idle
       if (source->get_state() == media_source::MediaSourceState::IDLE) {
         return source;  // First idle match wins
@@ -313,15 +312,14 @@ media_source::MediaSource *SpeakerSourceMediaPlayer::find_source_for_uri_(const 
   }
   // If no idle source found, try again without checking state (will be stopped by try_execute_play_uri_)
   for (auto &source : this->media_sources_) {
-    const std::string &prefix = source->get_uri_prefix();
-    if (uri.starts_with(prefix)) {
+    if (source->can_handle(uri)) {
       return source;  // First match wins
     }
   }
   return nullptr;
 }
 
-bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, size_t pipeline) {
+bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, uint8_t pipeline) {
   // Find target source
   media_source::MediaSource *target_source = this->find_source_for_uri_(uri);
   if (target_source == nullptr) {
@@ -390,7 +388,7 @@ bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, siz
   return true;  // Remove from queue
 }
 
-void SpeakerSourceMediaPlayer::queue_command_(MediaPlayerControlCommand::Type type, size_t pipeline) {
+void SpeakerSourceMediaPlayer::queue_command_(MediaPlayerControlCommand::Type type, uint8_t pipeline) {
   MediaPlayerControlCommand cmd;
   cmd.type = type;
   cmd.pipeline = pipeline;
@@ -399,7 +397,7 @@ void SpeakerSourceMediaPlayer::queue_command_(MediaPlayerControlCommand::Type ty
   }
 }
 
-void SpeakerSourceMediaPlayer::queue_play_current_(size_t pipeline, uint32_t delay_ms) {
+void SpeakerSourceMediaPlayer::queue_play_current_(uint8_t pipeline, uint32_t delay_ms) {
   if (delay_ms > 0) {
     this->set_timeout(PipelineState::TIMEOUT_IDS[pipeline], delay_ms,
                       [this, pipeline]() { this->queue_command_(MediaPlayerControlCommand::PLAY_CURRENT, pipeline); });
@@ -417,7 +415,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
   }
 
   bool command_executed = false;
-  size_t pipeline = control_command.pipeline;
+  uint8_t pipeline = control_command.pipeline;
 
   // Get pipeline state
   PipelineState &ps = this->pipelines_[pipeline];
@@ -867,7 +865,7 @@ void SpeakerSourceMediaPlayer::set_volume_(float volume, bool publish) {
   this->defer([this, volume]() { this->volume_trigger_->trigger(volume); });
 }
 
-size_t SpeakerSourceMediaPlayer::get_playlist_position_(size_t pipeline) const {
+size_t SpeakerSourceMediaPlayer::get_playlist_position_(uint8_t pipeline) const {
   const PipelineState &ps = this->pipelines_[pipeline];
 
   if (ps.shuffle_indices.empty() || ps.playlist_index >= ps.shuffle_indices.size()) {
@@ -876,7 +874,7 @@ size_t SpeakerSourceMediaPlayer::get_playlist_position_(size_t pipeline) const {
   return ps.shuffle_indices[ps.playlist_index];
 }
 
-void SpeakerSourceMediaPlayer::shuffle_playlist_(size_t pipeline) {
+void SpeakerSourceMediaPlayer::shuffle_playlist_(uint8_t pipeline) {
   PipelineState &ps = this->pipelines_[pipeline];
 
   if (ps.playlist.size() <= 1) {
@@ -910,7 +908,7 @@ void SpeakerSourceMediaPlayer::shuffle_playlist_(size_t pipeline) {
   }
 }
 
-void SpeakerSourceMediaPlayer::unshuffle_playlist_(size_t pipeline) {
+void SpeakerSourceMediaPlayer::unshuffle_playlist_(uint8_t pipeline) {
   PipelineState &ps = this->pipelines_[pipeline];
 
   if (!ps.shuffle_indices.empty() && ps.playlist_index < ps.shuffle_indices.size()) {

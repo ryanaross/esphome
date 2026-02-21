@@ -32,8 +32,6 @@ _MEDIA_SOURCE_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend({})
 
 def media_source_schema(
     class_: MockObjClass,
-    *,
-    media_player,
 ) -> cv.Schema:
     schema = {cv.GenerateID(CONF_ID): cv.declare_id(class_)}
 

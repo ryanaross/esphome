@@ -26,7 +26,6 @@ def _consume_http_source_sockets(config: ConfigType) -> ConfigType:
 CONFIG_SCHEMA = cv.All(
     media_source.media_source_schema(
         HTTPMediaSource,
-        media_player=False,
     )
     .extend(
         {
@@ -53,6 +52,3 @@ async def to_code(config):
 
     if CONF_TASK_STACK_IN_PSRAM in config:
         cg.add(var.set_task_stack_in_psram(config[CONF_TASK_STACK_IN_PSRAM]))
-
-    # Set URI prefix to handle both http and https
-    cg.add(var.set_uri_prefix("http"))

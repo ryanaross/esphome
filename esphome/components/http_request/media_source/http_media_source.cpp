@@ -1,5 +1,7 @@
 #include "http_media_source.h"
 
+#ifdef USE_ESP_IDF
+
 #include "esphome/components/audio/audio_decoder.h"
 #include "esphome/components/audio/audio_transfer_buffer.h"
 #include "esphome/core/log.h"
@@ -77,6 +79,12 @@ static audio::AudioFileType detect_audio_type(const std::string &content_type, c
       return audio::AudioFileType::FLAC;
     }
 #endif
+#ifdef USE_AUDIO_OPUS_SUPPORT
+    if (ct_lower.find("audio/opus") != std::string::npos ||
+        (ct_lower.find("audio/ogg") != std::string::npos && ct_lower.find("opus") != std::string::npos)) {
+      return audio::AudioFileType::OPUS;
+    }
+#endif
   }
 
   // Fallback to URL extension
@@ -93,6 +101,11 @@ static audio::AudioFileType detect_audio_type(const std::string &content_type, c
 #ifdef USE_AUDIO_FLAC_SUPPORT
   if (str_endswith(url_lower, ".flac")) {
     return audio::AudioFileType::FLAC;
+  }
+#endif
+#ifdef USE_AUDIO_OPUS_SUPPORT
+  if (str_endswith(url_lower, ".opus") || str_endswith(url_lower, ".ogg")) {
+    return audio::AudioFileType::OPUS;
   }
 #endif
 
@@ -118,7 +131,11 @@ bool HTTPMediaSource::play_uri(const std::string &uri) {
 
   // Queue playback start
   ControlMessage message = {.control = SourceControls::START, .uri = new std::string(uri)};
-  xQueueSend(this->pipeline_ctx_.controls_queue, &message, 0);
+  if (xQueueSend(this->pipeline_ctx_.controls_queue, &message, 0) != pdTRUE) {
+    delete message.uri;
+    ESP_LOGE(TAG, "Failed to queue play command");
+    return false;
+  }
   this->enable_loop_soon_any_context();
   return true;
 }
@@ -637,3 +654,5 @@ void HTTPMediaSource::decode_task(void *params) {
 
 }  // namespace http_request
 }  // namespace esphome
+
+#endif

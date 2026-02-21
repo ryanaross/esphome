@@ -20,7 +20,7 @@
 namespace esphome {
 namespace speaker_source {
 
-enum Pipeline : size_t {
+enum Pipeline : uint8_t {
   MEDIA_PIPELINE = 0,
   ANNOUNCEMENT_PIPELINE = 1,
 };
@@ -68,7 +68,7 @@ struct MediaPlayerControlCommand {
     SEND_COMMAND,      // Send command to active source
   };
   Type type;
-  size_t pipeline;  // MEDIA_PIPELINE or ANNOUNCEMENT_PIPELINE
+  uint8_t pipeline;  // MEDIA_PIPELINE or ANNOUNCEMENT_PIPELINE
 
   union {
     std::string *uri;  // Owned pointer, must delete after xQueueReceive (for PLAY_URI and ENQUEUE_URI)
@@ -116,8 +116,8 @@ class SpeakerSourceMediaPlayer : public Component,
 
   void add_media_source(media_source::MediaSource *media_source) { this->media_sources_.push_back(media_source); }
 
-  void set_speaker(size_t pipeline, speaker::Speaker *speaker) { this->pipelines_[pipeline].speaker = speaker; }
-  void set_format(size_t pipeline, const media_player::MediaPlayerSupportedFormat &format) {
+  void set_speaker(uint8_t pipeline, speaker::Speaker *speaker) { this->pipelines_[pipeline].speaker = speaker; }
+  void set_format(uint8_t pipeline, const media_player::MediaPlayerSupportedFormat &format) {
     this->pipelines_[pipeline].format = format;
   }
 
@@ -125,15 +125,15 @@ class SpeakerSourceMediaPlayer : public Component,
   Trigger<> *get_unmute_trigger() const { return this->unmute_trigger_; }
   Trigger<float> *get_volume_trigger() const { return this->volume_trigger_; }
 
-  void set_playlist_delay_ms(size_t pipeline, uint32_t delay_ms);
+  void set_playlist_delay_ms(uint8_t pipeline, uint32_t delay_ms);
 
  protected:
   /// @brief Find which pipeline a source belongs to by checking active, pending, and stopping sources
   /// @param source The source to find
   /// @return The pipeline index, or MEDIA_PIPELINE as fallback
-  size_t find_pipeline_for_source_(media_source::MediaSource *source) const;
+  uint8_t find_pipeline_for_source_(media_source::MediaSource *source) const;
 
-  void handle_speaker_playback_callback_(uint32_t frames, int64_t timestamp, size_t pipeline);
+  void handle_speaker_playback_callback_(uint32_t frames, int64_t timestamp, uint8_t pipeline);
 
   // Receives commands from HA or from the voice assistant component
   // Sends commands to the media_control_command_queue_
@@ -150,19 +150,19 @@ class SpeakerSourceMediaPlayer : public Component,
   void save_volume_restore_state_();
 
   void process_control_queue_();
-  bool try_execute_play_uri_(const std::string &uri, size_t pipeline);
+  bool try_execute_play_uri_(const std::string &uri, uint8_t pipeline);
   media_source::MediaSource *find_source_for_uri_(const std::string &uri);
-  void queue_command_(MediaPlayerControlCommand::Type type, size_t pipeline);
-  void queue_play_current_(size_t pipeline, uint32_t delay_ms = 0);
+  void queue_command_(MediaPlayerControlCommand::Type type, uint8_t pipeline);
+  void queue_play_current_(uint8_t pipeline, uint32_t delay_ms = 0);
 
   /// @brief Maps playlist_index through shuffle indices if shuffle is active
-  size_t get_playlist_position_(size_t pipeline) const;
+  size_t get_playlist_position_(uint8_t pipeline) const;
 
   /// @brief Generates shuffled indices for the playlist, keeping current track at current position
-  void shuffle_playlist_(size_t pipeline);
+  void shuffle_playlist_(uint8_t pipeline);
 
   /// @brief Clears shuffle indices and adjusts playlist_index to maintain current track
-  void unshuffle_playlist_(size_t pipeline);
+  void unshuffle_playlist_(uint8_t pipeline);
 
   std::vector<media_source::MediaSource *> media_sources_;
 

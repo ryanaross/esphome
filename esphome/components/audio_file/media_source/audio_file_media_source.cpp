@@ -1,6 +1,10 @@
 #include "audio_file_media_source.h"
 
+#ifdef USE_ESP_IDF
+
 #include "esphome/components/audio/audio_decoder.h"
+
+#include <cstring>
 
 namespace esphome {
 namespace audio_file {
@@ -65,10 +69,10 @@ bool AudioFileMediaSource::play_uri(const std::string &uri) {
   }
 
   // Strip "file://" prefix and find the file
-  std::string file_id = uri.substr(7);  // "file://" is 7 characters
+  const char *file_id = uri.c_str() + 7;  // "file://" is 7 characters
 
   for (const auto &named_file : this->files_) {
-    if (named_file.file_id == file_id) {
+    if (strcmp(named_file.file_id, file_id) == 0) {
       if (!this->is_ready() || this->is_failed()) {
         return false;
       }
@@ -81,7 +85,7 @@ bool AudioFileMediaSource::play_uri(const std::string &uri) {
     }
   }
 
-  ESP_LOGE(TAG, "File not found: '%s'", file_id.c_str());
+  ESP_LOGE(TAG, "File not found: '%s'", file_id);
   return false;
 }
 
@@ -331,3 +335,5 @@ void AudioFileMediaSource::decode_task(void *params) {
 
 }  // namespace audio_file
 }  // namespace esphome
+
+#endif

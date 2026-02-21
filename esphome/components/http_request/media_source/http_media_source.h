@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_ESP_IDF
+
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/media_source/media_source.h"
 #include "esphome/core/component.h"
@@ -56,6 +58,9 @@ class HTTPMediaSource : public Component, public media_source::MediaSource, publ
   bool play_uri(const std::string &uri) override;
   void handle_command(media_source::MediaSourceCommand command) override;
   media_source::MediaSourceCapabilities get_capabilities() override;
+  bool can_handle(const std::string &uri) const override {
+    return uri.starts_with("http://") || uri.starts_with("https://");
+  }
 
   void set_buffer_size(size_t buffer_size) { this->buffer_size_ = buffer_size; }
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
@@ -71,3 +76,5 @@ class HTTPMediaSource : public Component, public media_source::MediaSource, publ
 
 }  // namespace http_request
 }  // namespace esphome
+
+#endif

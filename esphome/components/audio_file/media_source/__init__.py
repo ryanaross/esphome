@@ -16,7 +16,6 @@ AudioFileMediaSource = audio_file_ns.class_(
 CONFIG_SCHEMA = (
     media_source.media_source_schema(
         AudioFileMediaSource,
-        media_player=False,
     )
     .extend(
         {
@@ -34,8 +33,6 @@ async def to_code(config):
 
     if CONF_TASK_STACK_IN_PSRAM in config:
         cg.add(var.set_task_stack_in_psram(config[CONF_TASK_STACK_IN_PSRAM]))
-
-    cg.add(var.set_uri_prefix("file"))
 
     # Add all shared audio files from the audio_file component
     for file_id_str, file_config_id in get_audio_file_ids().items():

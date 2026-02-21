@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef USE_ESP_IDF
+
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/media_source/media_source.h"
 #include "esphome/core/component.h"
@@ -20,7 +22,7 @@ enum class AudioFileDecodingState : uint8_t {
 
 struct NamedAudioFile {
   audio::AudioFile *file;
-  std::string file_id;
+  const char *file_id;
 };
 
 // Forward declaration
@@ -40,9 +42,10 @@ class AudioFileMediaSource : public Component, public media_source::MediaSource 
   bool play_uri(const std::string &uri) override;
   void handle_command(media_source::MediaSourceCommand command) override;
   media_source::MediaSourceCapabilities get_capabilities() override;
+  bool can_handle(const std::string &uri) const override { return uri.starts_with("file://"); }
 
-  void add_file(audio::AudioFile *media_file, std::string file_id) {
-    this->files_.push_back(NamedAudioFile{media_file, std::move(file_id)});
+  void add_file(audio::AudioFile *media_file, const char *file_id) {
+    this->files_.push_back(NamedAudioFile{media_file, file_id});
   }
 
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
@@ -65,3 +68,5 @@ class AudioFileMediaSource : public Component, public media_source::MediaSource 
 
 }  // namespace audio_file
 }  // namespace esphome
+
+#endif
