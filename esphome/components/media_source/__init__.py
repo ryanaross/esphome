@@ -6,7 +6,6 @@ from esphome.coroutine import CoroPriority, coroutine_with_priority
 from esphome.cpp_generator import MockObjClass
 
 CODEOWNERS = ["@kahrendt"]
-DEPENDENCIES = ["media_player"]
 
 IS_PLATFORM_COMPONENT = True
 
