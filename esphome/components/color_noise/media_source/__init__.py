@@ -15,7 +15,7 @@ ColorNoiseMediaSource = color_noise_ns.class_(
 
 CONF_DEFAULT_SEED = "default_seed"
 
-CONFIG_SCHEMA = (
+CONFIG_SCHEMA = cv.All(
     media_source.media_source_schema(
         ColorNoiseMediaSource,
     )
@@ -28,7 +28,8 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.boolean,
         }
     )
-    .extend(cv.COMPONENT_SCHEMA)
+    .extend(cv.COMPONENT_SCHEMA),
+    cv.only_on_esp32,
 )
 
 

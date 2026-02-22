@@ -13,7 +13,7 @@ AudioFileMediaSource = audio_file_ns.class_(
     "AudioFileMediaSource", cg.Component, media_source.MediaSource
 )
 
-CONFIG_SCHEMA = (
+CONFIG_SCHEMA = cv.All(
     media_source.media_source_schema(
         AudioFileMediaSource,
     )
@@ -22,7 +22,8 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.boolean,
         }
     )
-    .extend(cv.COMPONENT_SCHEMA)
+    .extend(cv.COMPONENT_SCHEMA),
+    cv.only_on_esp32,
 )
 
 

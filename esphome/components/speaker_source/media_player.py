@@ -130,7 +130,7 @@ PIPELINE_SCHEMA = cv.Schema(
     }
 )
 
-CONFIG_SCHEMA = (
+CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(SpeakerSourceMediaPlayer),
@@ -152,7 +152,8 @@ CONFIG_SCHEMA = (
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
-    .extend(media_player.media_player_schema(SpeakerSourceMediaPlayer))
+    .extend(media_player.media_player_schema(SpeakerSourceMediaPlayer)),
+    cv.only_on_esp32,
 )
 
 
