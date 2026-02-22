@@ -322,21 +322,21 @@ void HTTPMediaSource::handle_command(media_source::MediaSourceCommand command) {
 
   ControlMessage message;
   switch (command) {
-    case media_source::MEDIA_SOURCE_COMMAND_END:
+    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_END:
       // Intentional fallthrough
-    case media_source::MEDIA_SOURCE_COMMAND_STOP: {
+    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP: {
       if (ctx.decoding_state == HTTPDecodingState::DECODING) {
         message.control = SourceControls::STOP;
         xQueueSend(ctx.controls_queue, &message, 0);
       }
       break;
     }
-    case media_source::MEDIA_SOURCE_COMMAND_PAUSE: {
+    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PAUSE: {
       message.control = SourceControls::PAUSE;
       xQueueSend(ctx.controls_queue, &message, 0);
       break;
     }
-    case media_source::MEDIA_SOURCE_COMMAND_PLAY: {
+    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY: {
       message.control = SourceControls::RESUME;
       xQueueSend(ctx.controls_queue, &message, 0);
       break;

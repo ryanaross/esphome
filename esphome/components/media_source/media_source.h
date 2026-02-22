@@ -25,7 +25,7 @@ enum class MediaSourceState : uint8_t {
 };
 
 /// @brief Commands that can be sent to a media source
-enum MediaSourceCommand : uint8_t {
+enum class MediaSourceCommand : uint8_t {
   MEDIA_SOURCE_COMMAND_END = 0,  // Indicates source should end
   MEDIA_SOURCE_COMMAND_PLAY,
   MEDIA_SOURCE_COMMAND_PAUSE,
