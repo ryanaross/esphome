@@ -1,5 +1,9 @@
 #pragma once
 
+#include "esphome/core/defines.h"
+
+#ifdef USE_ESP32
+
 #include "esphome/core/automation.h"
 #include "speaker_source_media_player.h"
 
@@ -23,3 +27,5 @@ template<typename... Ts> class SetPlaylistDelayAction : public Action<Ts...> {
 
 }  // namespace speaker_source
 }  // namespace esphome
+
+#endif  // USE_ESP32

@@ -1,5 +1,9 @@
 #pragma once
 
+#include "esphome/core/defines.h"
+
+#ifdef USE_ESP32
+
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/media_source/media_source.h"
 #include "esphome/core/component.h"
@@ -74,3 +78,5 @@ class HTTPMediaSource : public Component, public media_source::MediaSource, publ
 
 }  // namespace http_request
 }  // namespace esphome
+
+#endif  // USE_ESP32

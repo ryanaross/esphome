@@ -1,5 +1,9 @@
 #pragma once
 
+#include "esphome/core/defines.h"
+
+#ifdef USE_ESP32
+
 #include "esphome/components/audio/audio.h"
 
 #include "esphome/components/media_source/media_source.h"
@@ -194,3 +198,5 @@ class SpeakerSourceMediaPlayer : public Component,
 
 }  // namespace speaker_source
 }  // namespace esphome
+
+#endif  // USE_ESP32

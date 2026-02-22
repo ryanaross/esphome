@@ -1,5 +1,7 @@
 #include "speaker_source_media_player.h"
 
+#ifdef USE_ESP32
+
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
@@ -917,3 +919,5 @@ void SpeakerSourceMediaPlayer::unshuffle_playlist_(uint8_t pipeline) {
 
 }  // namespace speaker_source
 }  // namespace esphome
+
+#endif  // USE_ESP32

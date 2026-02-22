@@ -1,5 +1,7 @@
 #include "color_noise_media_source.h"
 
+#ifdef USE_ESP32
+
 #include "esphome/components/audio/audio_transfer_buffer.h"
 
 #include <cstdlib>
@@ -548,3 +550,5 @@ void ColorNoiseMediaSource::generate_task(void *params) {
 
 }  // namespace color_noise
 }  // namespace esphome
+
+#endif  // USE_ESP32

@@ -1,5 +1,9 @@
 #pragma once
 
+#include "esphome/core/defines.h"
+
+#ifdef USE_ESP32
+
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/media_source/media_source.h"
 #include "esphome/core/component.h"
@@ -105,3 +109,5 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
 
 }  // namespace color_noise
 }  // namespace esphome
+
+#endif  // USE_ESP32
