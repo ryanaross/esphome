@@ -17,11 +17,10 @@ namespace media_source {
 
 /// @brief Represents the current state of a media source
 enum class MediaSourceState : uint8_t {
-  IDLE = 0,       // Not playing, ready to accept play_uri
-  PLAYING = 1,    // Currently playing media
-  PAUSED = 2,     // Playback paused, can be resumed
-  BUFFERING = 3,  // Buffering data (for streaming sources)
-  ERROR = 4,      // Error occurred during playback
+  IDLE = 0,     // Not playing, ready to accept play_uri
+  PLAYING = 1,  // Currently playing media
+  PAUSED = 2,   // Playback paused, can be resumed
+  ERROR = 4,    // Error occurred during playback
 };
 
 /// @brief Commands that can be sent to a media source
@@ -33,7 +32,6 @@ enum class MediaSourceCommand : uint8_t {
   MEDIA_SOURCE_COMMAND_STOP,    // Indicates source should end, and, if a smart, forward the command for the group
   MEDIA_SOURCE_COMMAND_NEXT,
   MEDIA_SOURCE_COMMAND_PREVIOUS,
-  MEDIA_SOURCE_COMMAND_ENQUEUE,         // Add URI to internal playlist
   MEDIA_SOURCE_COMMAND_CLEAR_PLAYLIST,  // Clear internal playlist
   MEDIA_SOURCE_COMMAND_REPEAT_ALL,      // Enable repeat-all mode
   MEDIA_SOURCE_COMMAND_REPEAT_ONE,      // Enable repeat-one mode
@@ -87,12 +85,6 @@ class MediaSource {
   /// @param uri The URI to play (e.g., "file://my_audio", "http://stream_url")
   /// @return true if playback started successfully, false otherwise
   virtual bool play_uri(const std::string &uri) = 0;
-
-  /// @brief Enqueue a URI to the source's internal playlist (for sources with has_internal_playlist)
-  /// Sources without internal playlist support can ignore this (default implementation does nothing).
-  /// @param uri The URI to enqueue
-  /// @return true if enqueue was successful, false otherwise
-  virtual bool enqueue_uri(const std::string &uri) { return false; }
 
   /// @brief Handle playback commands (pause, stop, next, etc.)
   /// @param command The command to execute

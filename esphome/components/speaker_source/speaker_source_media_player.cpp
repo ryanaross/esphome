@@ -220,7 +220,6 @@ void SpeakerSourceMediaPlayer::loop() {
       switch (announcement_state) {
         case media_source::MediaSourceState::PLAYING:
         case media_source::MediaSourceState::PAUSED:  // Treat paused announcements as announcing
-        case media_source::MediaSourceState::BUFFERING:
           this->state = media_player::MEDIA_PLAYER_STATE_ANNOUNCING;
           break;
         case media_source::MediaSourceState::ERROR:
@@ -244,9 +243,6 @@ void SpeakerSourceMediaPlayer::loop() {
             break;
           case media_source::MediaSourceState::PLAYING:
             this->state = media_player::MEDIA_PLAYER_STATE_PLAYING;
-            break;
-          case media_source::MediaSourceState::BUFFERING:
-            this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
             break;
           case media_source::MediaSourceState::ERROR:
             this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
@@ -277,9 +273,6 @@ void SpeakerSourceMediaPlayer::loop() {
           break;
         case media_source::MediaSourceState::PLAYING:
           this->state = media_player::MEDIA_PLAYER_STATE_PLAYING;
-          break;
-        case media_source::MediaSourceState::BUFFERING:
-          this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
           break;
         case media_source::MediaSourceState::ERROR:
           this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
