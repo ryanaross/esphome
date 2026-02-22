@@ -70,17 +70,17 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
     return false;
   }
 
-  std::string noise_type_str = uri.substr(host_start, host_end - host_start);
+  size_t host_len = host_end - host_start;
   NoiseType noise_type;
 
-  if (noise_type_str == "white") {
+  if (uri.compare(host_start, host_len, "white") == 0) {
     noise_type = NoiseType::WHITE;
-  } else if (noise_type_str == "brown") {
+  } else if (uri.compare(host_start, host_len, "brown") == 0) {
     noise_type = NoiseType::BROWN;
-  } else if (noise_type_str == "pink") {
+  } else if (uri.compare(host_start, host_len, "pink") == 0) {
     noise_type = NoiseType::PINK;
   } else {
-    ESP_LOGE(TAG, "Invalid noise type: '%s'. Must be 'white', 'brown', or 'pink'", noise_type_str.c_str());
+    ESP_LOGE(TAG, "Invalid noise type in URI: '%s'. Must be 'white', 'brown', or 'pink'", uri.c_str());
     return false;
   }
 
@@ -106,26 +106,19 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
 
   size_t query_pos = uri.find('?');
   if (query_pos != std::string::npos) {
-    std::string query = uri.substr(query_pos + 1);
+    size_t query_start = query_pos + 1;
 
     // Simple query parser for seed parameter
-    size_t seed_pos = query.find("seed=");
-    if (seed_pos != std::string::npos && (seed_pos == 0 || query[seed_pos - 1] == '&')) {
-      seed_pos += 5;  // Skip "seed="
-      size_t end_pos = query.find('&', seed_pos);
-      size_t len = (end_pos == std::string::npos) ? std::string::npos : end_pos - seed_pos;
-      std::string seed_str = query.substr(seed_pos, len);
-      seed = std::strtoul(seed_str.c_str(), nullptr, 10);
+    size_t seed_pos = uri.find("seed=", query_start);
+    if (seed_pos != std::string::npos && (seed_pos == query_start || uri[seed_pos - 1] == '&')) {
+      // strtoul stops at the first non-digit character, so '&' or end-of-string terminates naturally
+      seed = std::strtoul(uri.c_str() + seed_pos + 5, nullptr, 10);
     }
 
     // Simple query parser for duration parameter
-    size_t duration_pos = query.find("duration=");
-    if (duration_pos != std::string::npos && (duration_pos == 0 || query[duration_pos - 1] == '&')) {
-      duration_pos += 9;  // Skip "duration="
-      size_t end_pos = query.find('&', duration_pos);
-      size_t len = (end_pos == std::string::npos) ? std::string::npos : end_pos - duration_pos;
-      std::string duration_str = query.substr(duration_pos, len);
-      duration_seconds = std::strtoul(duration_str.c_str(), nullptr, 10);
+    size_t duration_pos = uri.find("duration=", query_start);
+    if (duration_pos != std::string::npos && (duration_pos == query_start || uri[duration_pos - 1] == '&')) {
+      duration_seconds = std::strtoul(uri.c_str() + duration_pos + 9, nullptr, 10);
     }
   }
 
