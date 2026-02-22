@@ -83,8 +83,8 @@ void SpeakerSourceMediaPlayer::handle_speaker_playback_callback_(uint32_t frames
   }
 
   // Calculate how many frames belong to this source
-  uint32_t source_frames = std::min(frames, ps.pending_frames);
-  ps.pending_frames -= source_frames;
+  uint32_t source_frames = std::min(frames, ps.pending_frames.load(std::memory_order_relaxed));
+  ps.pending_frames.fetch_sub(source_frames, std::memory_order_relaxed);
 
   if (source_frames > 0) {
     // Notify the source about the played audio
@@ -184,7 +184,7 @@ size_t SpeakerSourceMediaPlayer::on_media_output(media_source::MediaSource *sour
     size_t bytes_written = ps.speaker->play(data, length, ticks);
     if (bytes_written > 0) {
       // Track frames sent to speaker for this source
-      ps.pending_frames += stream_info.bytes_to_frames(bytes_written);
+      ps.pending_frames.fetch_add(stream_info.bytes_to_frames(bytes_written), std::memory_order_relaxed);
     }
     return bytes_written;
   }
@@ -383,7 +383,7 @@ bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, uin
   }
 
   // Reset pending frame counter for this pipeline since we're starting a new source
-  ps.pending_frames = 0;
+  ps.pending_frames.store(0, std::memory_order_relaxed);
 
   return true;  // Remove from queue
 }

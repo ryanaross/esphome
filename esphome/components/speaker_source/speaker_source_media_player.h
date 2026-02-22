@@ -15,6 +15,7 @@
 #include "esphome/core/preferences.h"
 
 #include <array>
+#include <atomic>
 #include <vector>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -54,8 +55,10 @@ struct PipelineState {
   // which contain the actual playlist indices in shuffled order
   std::vector<size_t> shuffle_indices;
 
-  // Track frames sent to speaker to correlate with playback callbacks
-  uint32_t pending_frames{0};
+  // Track frames sent to speaker to correlate with playback callbacks.
+  // Atomic because it is written from the main loop/source tasks and read/decremented from the speaker playback
+  // callback.
+  std::atomic<uint32_t> pending_frames{0};
 
   /// @brief Check if this pipeline is configured (has a speaker assigned)
   bool is_configured() const { return this->speaker != nullptr; }
