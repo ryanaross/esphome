@@ -3,7 +3,7 @@
 import esphome.codegen as cg
 from esphome.components import media_source
 import esphome.config_validation as cv
-from esphome.const import CONF_ID, CONF_SAMPLE_RATE, CONF_TASK_STACK_IN_PSRAM
+from esphome.const import CONF_SAMPLE_RATE, CONF_TASK_STACK_IN_PSRAM
 
 CODEOWNERS = ["@kahrendt"]
 DEPENDENCIES = ["media_source", "audio"]
@@ -15,19 +15,26 @@ ColorNoiseMediaSource = color_noise_ns.class_(
 
 CONF_DEFAULT_SEED = "default_seed"
 
-CONFIG_SCHEMA = cv.Schema(
-    {
-        cv.GenerateID(): cv.declare_id(ColorNoiseMediaSource),
-        cv.Optional(CONF_SAMPLE_RATE, default=16000): cv.int_range(min=8000, max=48000),
-        cv.Optional(CONF_DEFAULT_SEED): cv.uint32_t,
-        cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.boolean,
-    }
-).extend(cv.COMPONENT_SCHEMA)
+CONFIG_SCHEMA = (
+    media_source.media_source_schema(
+        ColorNoiseMediaSource,
+    )
+    .extend(
+        {
+            cv.Optional(CONF_SAMPLE_RATE, default=16000): cv.int_range(
+                min=8000, max=48000
+            ),
+            cv.Optional(CONF_DEFAULT_SEED): cv.uint32_t,
+            cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.boolean,
+        }
+    )
+    .extend(cv.COMPONENT_SCHEMA)
+)
 
 
 async def to_code(config):
     """Generate code for color noise media source."""
-    var = cg.new_Pvariable(config[CONF_ID])
+    var = cg.new_Pvariable(config[cv.CONF_ID])
     await cg.register_component(var, config)
     await media_source.register_media_source(var, config)
 
