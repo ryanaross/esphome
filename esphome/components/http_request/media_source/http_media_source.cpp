@@ -442,12 +442,12 @@ void HTTPMediaSource::read_task(void *params) {
 
     {  // Ensures temp_ring_buffer falls out of scope and deallocates
       std::shared_ptr<RingBuffer> temp_ring_buffer;
-      if (!ctx.raw_file_ring_buffer.use_count()) {
+      if (ctx.raw_file_ring_buffer.expired()) {
         temp_ring_buffer = RingBuffer::create(this_source->buffer_size_);
         ctx.raw_file_ring_buffer = temp_ring_buffer;
       }
 
-      if (!ctx.raw_file_ring_buffer.use_count()) {
+      if (ctx.raw_file_ring_buffer.expired()) {
         ESP_LOGE(TAG, "Failed to create ring buffer");
         container->end();
         xEventGroupSetBits(ctx.event_group, EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED |
