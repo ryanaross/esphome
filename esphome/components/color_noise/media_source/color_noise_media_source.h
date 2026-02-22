@@ -62,6 +62,7 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
  public:
   void setup() override;
   void loop() override;
+  // TODO: implement dump_config() to log sample rate and default seed
 
   // MediaSource interface implementation
   bool play_uri(const std::string &uri) override;
