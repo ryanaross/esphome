@@ -88,10 +88,8 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
     return false;
   }
 
-  auto &ctx = this->pipeline_ctx_;
-
-  // Store the noise type in the context
-  ctx.noise_type = noise_type;
+  // Store the noise type
+  this->noise_type_ = noise_type;
 
   // Parse URI for optional seed and duration parameters
   // Format: color-noise://<type>/ or color-noise://<type>/?seed=12345&duration=10
@@ -143,7 +141,7 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
 
   // Queue playback start
   ControlMessage message = {.control = SourceControls::START, .seed = seed, .total_samples_to_generate = total_samples};
-  xQueueSend(ctx.controls_queue, &message, 0);
+  xQueueSend(this->controls_queue_, &message, 0);
   this->enable_loop_soon_any_context();
   return true;
 }
@@ -152,41 +150,39 @@ void ColorNoiseMediaSource::setup() {
   this->disable_loop();
 
   // Create event group and queue upfront so they're available when play_uri is called
-  this->pipeline_ctx_.event_group = xEventGroupCreate();
-  this->pipeline_ctx_.controls_queue = xQueueCreate(3, sizeof(ControlMessage));
+  this->event_group_ = xEventGroupCreate();
+  this->controls_queue_ = xQueueCreate(3, sizeof(ControlMessage));
 }
 
 void ColorNoiseMediaSource::loop() {
-  auto &ctx = this->pipeline_ctx_;
-
   // Process control messages
   ControlMessage incoming_control;
-  if (xQueueReceive(ctx.controls_queue, &incoming_control, 0)) {
+  if (xQueueReceive(this->controls_queue_, &incoming_control, 0)) {
     switch (incoming_control.control) {
       case SourceControls::START:
-        ctx.seed = incoming_control.seed;
-        ctx.total_samples_to_generate = incoming_control.total_samples_to_generate;
-        ctx.samples_generated = 0;  // Reset sample counter
-        ctx.paused = false;
-        ctx.generation_state = ColorNoiseGenerationState::START_TASK;
+        this->seed_ = incoming_control.seed;
+        this->total_samples_to_generate_ = incoming_control.total_samples_to_generate;
+        this->samples_generated_ = 0;  // Reset sample counter
+        this->paused_ = false;
+        this->generation_state_ = ColorNoiseGenerationState::START_TASK;
         break;
       case SourceControls::STOP:
-        if (ctx.generation_state == ColorNoiseGenerationState::GENERATING) {
-          xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_STOP);
+        if (this->generation_state_ == ColorNoiseGenerationState::GENERATING) {
+          xEventGroupSetBits(this->event_group_, EventGroupBits::COMMAND_STOP);
         }
         break;
       case SourceControls::PAUSE:
-        if ((ctx.generation_state == ColorNoiseGenerationState::GENERATING) &&
+        if ((this->generation_state_ == ColorNoiseGenerationState::GENERATING) &&
             (this->get_state() == media_source::MediaSourceState::PLAYING)) {
-          xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_PAUSE);
+          xEventGroupSetBits(this->event_group_, EventGroupBits::COMMAND_PAUSE);
           this->set_state_(media_source::MediaSourceState::PAUSED);
         }
         break;
       case SourceControls::RESUME:
-        if ((ctx.generation_state == ColorNoiseGenerationState::GENERATING) &&
+        if ((this->generation_state_ == ColorNoiseGenerationState::GENERATING) &&
             (this->get_state() == media_source::MediaSourceState::PAUSED)) {
           // Clear the pause command bit to resume
-          xEventGroupClearBits(ctx.event_group, EventGroupBits::COMMAND_PAUSE);
+          xEventGroupClearBits(this->event_group_, EventGroupBits::COMMAND_PAUSE);
           this->set_state_(media_source::MediaSourceState::PLAYING);
         }
         break;
@@ -194,79 +190,77 @@ void ColorNoiseMediaSource::loop() {
   }
 
   // Process pipeline state machine
-  switch (ctx.generation_state) {
+  switch (this->generation_state_) {
     case ColorNoiseGenerationState::START_TASK: {
       // Event group and queue already created in setup()
       // Start the task
-      if (ctx.generate_task_handle == nullptr) {
-        xEventGroupClearBits(ctx.event_group, ALL_BITS);
-        if (ctx.generate_task_stack_buffer == nullptr) {
+      if (this->generate_task_handle_ == nullptr) {
+        xEventGroupClearBits(this->event_group_, ALL_BITS);
+        if (this->generate_task_stack_buffer_ == nullptr) {
           if (this->task_stack_in_psram_) {
             RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
-            ctx.generate_task_stack_buffer = stack_allocator.allocate(GENERATE_TASK_STACK_SIZE);
+            this->generate_task_stack_buffer_ = stack_allocator.allocate(GENERATE_TASK_STACK_SIZE);
           } else {
             RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-            ctx.generate_task_stack_buffer = stack_allocator.allocate(GENERATE_TASK_STACK_SIZE);
+            this->generate_task_stack_buffer_ = stack_allocator.allocate(GENERATE_TASK_STACK_SIZE);
           }
         }
-        if (ctx.generate_task_stack_buffer == nullptr) {
+        if (this->generate_task_stack_buffer_ == nullptr) {
           ESP_LOGE(TAG, "Failed to allocate generate task stack");
           this->mark_failed();
           return;
         }
 
-        auto *params = new GenerateTaskParams{this};
-        ctx.generate_task_handle = xTaskCreateStatic(generate_task, "NoiseGen", GENERATE_TASK_STACK_SIZE, params, 1,
-                                                     ctx.generate_task_stack_buffer, &ctx.generate_task_stack);
-        if (ctx.generate_task_handle == nullptr) {
+        this->generate_task_handle_ = xTaskCreateStatic(generate_task, "NoiseGen", GENERATE_TASK_STACK_SIZE, this, 1,
+                                                        this->generate_task_stack_buffer_, &this->generate_task_stack_);
+        if (this->generate_task_handle_ == nullptr) {
           ESP_LOGE(TAG, "Failed to create generate task");
-          delete params;
           this->mark_failed();
           return;
         }
       }
       ESP_LOGD(TAG, "Started generate task");
-      ctx.generation_state = ColorNoiseGenerationState::GENERATING;
+      this->generation_state_ = ColorNoiseGenerationState::GENERATING;
       break;
     }
     case ColorNoiseGenerationState::GENERATING: {
       // Only state when we handle event group bits
-      EventBits_t event_bits = xEventGroupGetBits(ctx.event_group);
+      EventBits_t event_bits = xEventGroupGetBits(this->event_group_);
 
       if (event_bits & TASK_STARTING) {
         ESP_LOGD(TAG, "Task starting");
-        xEventGroupClearBits(ctx.event_group, TASK_STARTING);
+        xEventGroupClearBits(this->event_group_, TASK_STARTING);
       }
 
       if (event_bits & TASK_RUNNING) {
         ESP_LOGD(TAG, "Task running");
-        xEventGroupClearBits(ctx.event_group, TASK_RUNNING);
+        xEventGroupClearBits(this->event_group_, TASK_RUNNING);
         this->set_state_(media_source::MediaSourceState::PLAYING);
       }
 
       if (event_bits & TASK_STOPPING) {
         ESP_LOGD(TAG, "Task stopping");
-        xEventGroupClearBits(ctx.event_group, TASK_STOPPING);
+        xEventGroupClearBits(this->event_group_, TASK_STOPPING);
       }
 
       if (event_bits & TASK_STOPPED) {
         ESP_LOGD(TAG, "Task stopped");
-        xEventGroupClearBits(ctx.event_group, TASK_STOPPED | COMMAND_STOP | COMMAND_PAUSE);
+        xEventGroupClearBits(this->event_group_, TASK_STOPPED | COMMAND_STOP | COMMAND_PAUSE);
 
-        vTaskDelete(ctx.generate_task_handle);
-        ctx.generate_task_handle = nullptr;
-        if (ctx.generate_task_stack_buffer != nullptr) {
+        vTaskDelete(this->generate_task_handle_);
+        this->generate_task_handle_ = nullptr;
+        if (this->generate_task_stack_buffer_ != nullptr) {
           if (this->task_stack_in_psram_) {
             RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
-            stack_allocator.deallocate(ctx.generate_task_stack_buffer, GENERATE_TASK_STACK_SIZE);
+            stack_allocator.deallocate(this->generate_task_stack_buffer_, GENERATE_TASK_STACK_SIZE);
           } else {
             RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-            stack_allocator.deallocate(ctx.generate_task_stack_buffer, GENERATE_TASK_STACK_SIZE);
+            stack_allocator.deallocate(this->generate_task_stack_buffer_, GENERATE_TASK_STACK_SIZE);
           }
-          ctx.generate_task_stack_buffer = nullptr;
+          this->generate_task_stack_buffer_ = nullptr;
         }
         this->set_state_(media_source::MediaSourceState::IDLE);
-        ctx.generation_state = ColorNoiseGenerationState::IDLE;
+        this->generation_state_ = ColorNoiseGenerationState::IDLE;
       }
       break;
     }
@@ -277,14 +271,13 @@ void ColorNoiseMediaSource::loop() {
   }
 
   // Check if we should disable loop when idle
-  if (ctx.generation_state == ColorNoiseGenerationState::IDLE) {
+  if (this->generation_state_ == ColorNoiseGenerationState::IDLE) {
     this->disable_loop();
   }
 }
 
 void ColorNoiseMediaSource::handle_command(media_source::MediaSourceCommand command) {
-  auto &ctx = this->pipeline_ctx_;
-  if (ctx.controls_queue == nullptr) {
+  if (this->controls_queue_ == nullptr) {
     return;
   }
 
@@ -293,20 +286,20 @@ void ColorNoiseMediaSource::handle_command(media_source::MediaSourceCommand comm
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_END:
       // Intentional fallthrough
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP: {
-      if (ctx.generation_state == ColorNoiseGenerationState::GENERATING) {
+      if (this->generation_state_ == ColorNoiseGenerationState::GENERATING) {
         message.control = SourceControls::STOP;
-        xQueueSend(ctx.controls_queue, &message, 0);
+        xQueueSend(this->controls_queue_, &message, 0);
       }
       break;
     }
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PAUSE: {
       message.control = SourceControls::PAUSE;
-      xQueueSend(ctx.controls_queue, &message, 0);
+      xQueueSend(this->controls_queue_, &message, 0);
       break;
     }
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY: {
       message.control = SourceControls::RESUME;
-      xQueueSend(ctx.controls_queue, &message, 0);
+      xQueueSend(this->controls_queue_, &message, 0);
       break;
     }
     default:
@@ -407,14 +400,10 @@ void ColorNoiseMediaSource::generate_pink_noise_samples(int16_t *samples, size_t
 }
 
 void ColorNoiseMediaSource::generate_task(void *params) {
-  auto *task_params = static_cast<GenerateTaskParams *>(params);
-  ColorNoiseMediaSource *this_source = task_params->source;
-  delete task_params;
-
-  auto &ctx = this_source->pipeline_ctx_;
+  ColorNoiseMediaSource *this_source = static_cast<ColorNoiseMediaSource *>(params);
 
   {
-    xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STARTING);
+    xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STARTING);
 
     // Create AudioStreamInfo with 1 channel (mono)
     audio::AudioStreamInfo stream_info(16, 1, this_source->sample_rate_);
@@ -426,7 +415,7 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     if (this_source->get_listener() == nullptr) {
       ESP_LOGE(TAG, "Listener is not set! Make sure the ColorNoiseMediaSource is added to "
                     "media_sources in your YAML config");
-      xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STOPPED);
+      xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
       while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
       }
@@ -437,7 +426,7 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     std::unique_ptr<audio::AudioSinkTransferBuffer> output_buffer = audio::AudioSinkTransferBuffer::create(buffer_size);
     if (!output_buffer) {
       ESP_LOGE(TAG, "Failed to allocate output transfer buffer");
-      xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STOPPED);
+      xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
       while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
       }
@@ -450,39 +439,40 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     output_buffer->set_sink(&audio_sink);
 
     // Initialize PRNG state with seed
-    uint32_t prng_state = ctx.seed;
+    uint32_t prng_state = this_source->seed_;
     if (prng_state == 0) {
       // Ensure we don't have a zero state (xorshift32 doesn't work with zero)
       prng_state = 0xDEADBEEF;
     }
 
     // Initialize noise-specific state
-    if (ctx.noise_type == NoiseType::BROWN) {
-      ctx.brown_y_accumulator = 0;
-      initialize_brown_coefficients(stream_info.get_sample_rate(), ctx.brown_leakage, ctx.brown_scaling);
-    } else if (ctx.noise_type == NoiseType::PINK) {
+    if (this_source->noise_type_ == NoiseType::BROWN) {
+      this_source->brown_y_accumulator_ = 0;
+      initialize_brown_coefficients(stream_info.get_sample_rate(), this_source->brown_leakage_,
+                                    this_source->brown_scaling_);
+    } else if (this_source->noise_type_ == NoiseType::PINK) {
       for (size_t i = 0; i < 7; i++) {
-        ctx.pink_buffers[i] = 0;
+        this_source->pink_buffers_[i] = 0;
       }
     }
 
-    xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_RUNNING);
+    xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_RUNNING);
 
     // Main generation loop
     while (true) {
-      EventBits_t event_bits = xEventGroupGetBits(ctx.event_group);
+      EventBits_t event_bits = xEventGroupGetBits(this_source->event_group_);
 
       if (event_bits & EventGroupBits::COMMAND_STOP) {
         break;
       }
 
       // Check if we've generated enough samples for the requested duration
-      bool generation_complete =
-          (ctx.total_samples_to_generate > 0) && (ctx.samples_generated >= ctx.total_samples_to_generate);
+      bool generation_complete = (this_source->total_samples_to_generate_ > 0) &&
+                                 (this_source->samples_generated_ >= this_source->total_samples_to_generate_);
 
       if (generation_complete && output_buffer->available() == 0) {
         // All samples generated and buffer is empty, stop cleanly
-        ESP_LOGD(TAG, "Duration complete, %zu samples generated", ctx.samples_generated);
+        ESP_LOGD(TAG, "Duration complete, %zu samples generated", this_source->samples_generated_);
         break;
       }
 
@@ -494,8 +484,8 @@ void ColorNoiseMediaSource::generate_task(void *params) {
           size_t bytes_to_generate = output_buffer->free();
 
           // Limit bytes to generate if we're close to the duration limit
-          if (ctx.total_samples_to_generate > 0) {
-            size_t samples_remaining = ctx.total_samples_to_generate - ctx.samples_generated;
+          if (this_source->total_samples_to_generate_ > 0) {
+            size_t samples_remaining = this_source->total_samples_to_generate_ - this_source->samples_generated_;
             size_t bytes_remaining = stream_info.samples_to_bytes(samples_remaining);
             if (bytes_to_generate > bytes_remaining) {
               bytes_to_generate = bytes_remaining;
@@ -507,22 +497,24 @@ void ColorNoiseMediaSource::generate_task(void *params) {
             int16_t *samples = reinterpret_cast<int16_t *>(output_buffer->get_buffer_end());
             size_t sample_count = bytes_to_generate / sizeof(int16_t);
 
-            switch (ctx.noise_type) {
+            switch (this_source->noise_type_) {
               case NoiseType::WHITE:
-                generate_white_noise_samples(samples, sample_count, prng_state, ctx.amplitude_q15);
+                generate_white_noise_samples(samples, sample_count, prng_state, this_source->amplitude_q15_);
                 break;
               case NoiseType::BROWN:
-                generate_brown_noise_samples(samples, sample_count, prng_state, ctx.brown_y_accumulator,
-                                             ctx.brown_leakage, ctx.brown_scaling, ctx.amplitude_q15);
+                generate_brown_noise_samples(samples, sample_count, prng_state, this_source->brown_y_accumulator_,
+                                             this_source->brown_leakage_, this_source->brown_scaling_,
+                                             this_source->amplitude_q15_);
                 break;
               case NoiseType::PINK:
-                generate_pink_noise_samples(samples, sample_count, prng_state, ctx.pink_buffers, ctx.amplitude_q15);
+                generate_pink_noise_samples(samples, sample_count, prng_state, this_source->pink_buffers_,
+                                            this_source->amplitude_q15_);
                 break;
             }
             output_buffer->increase_buffer_length(bytes_to_generate);
 
             // Track the number of samples generated
-            ctx.samples_generated += stream_info.bytes_to_samples(bytes_to_generate);
+            this_source->samples_generated_ += stream_info.bytes_to_samples(bytes_to_generate);
           }
         }
 
@@ -533,9 +525,9 @@ void ColorNoiseMediaSource::generate_task(void *params) {
         vTaskDelay(pdMS_TO_TICKS(READ_WRITE_TIMEOUT_MS));
       }
     }
-    xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STOPPING);
+    xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPING);
   }
-  xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STOPPED);
+  xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
   while (true) {
     vTaskDelay(pdMS_TO_TICKS(1000));
   }

@@ -30,11 +30,6 @@ struct NamedAudioFile {
 // Forward declaration
 class AudioFileMediaSource;
 
-/// @brief Parameters passed to decode task
-struct DecodeTaskParams {
-  AudioFileMediaSource *source;
-};
-
 class AudioFileMediaSource : public Component, public media_source::MediaSource {
  public:
   void setup() override;

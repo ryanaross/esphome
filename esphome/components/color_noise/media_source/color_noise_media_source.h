@@ -31,33 +31,6 @@ enum class ColorNoiseGenerationState : uint8_t {
 // Forward declaration
 class ColorNoiseMediaSource;
 
-/// @brief Context for a single pipeline's color noise generation
-struct ColorNoiseSourcePipeline {
-  uint32_t seed{0};
-  NoiseType noise_type{NoiseType::WHITE};
-  bool paused{false};
-  ColorNoiseGenerationState generation_state{ColorNoiseGenerationState::IDLE};
-  EventGroupHandle_t event_group{nullptr};
-  QueueHandle_t controls_queue{nullptr};
-  TaskHandle_t generate_task_handle{nullptr};
-  StaticTask_t generate_task_stack;
-  StackType_t *generate_task_stack_buffer{nullptr};
-  size_t total_samples_to_generate{0};  // 0 = infinite playback, >0 = stop after this many samples
-  size_t samples_generated{0};          // Counter for tracking playback progress
-  // Brown noise state
-  int32_t brown_y_accumulator{0};
-  int32_t brown_leakage{0};
-  int32_t brown_scaling{0};
-  // Pink noise state (Voss-McCartney algorithm with 5 octave generators)
-  std::array<int32_t, 7> pink_buffers{};
-  int32_t amplitude_q15{29490};
-};
-
-/// @brief Parameters passed to generate task
-struct GenerateTaskParams {
-  ColorNoiseMediaSource *source;
-};
-
 class ColorNoiseMediaSource : public Component, public media_source::MediaSource {
  public:
   void setup() override;
@@ -76,10 +49,29 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
 
  protected:
-  ColorNoiseSourcePipeline pipeline_ctx_;
   uint32_t sample_rate_{16000};
   uint32_t default_seed_{0};
   bool task_stack_in_psram_{false};
+
+  // Pipeline state
+  uint32_t seed_{0};
+  NoiseType noise_type_{NoiseType::WHITE};
+  bool paused_{false};
+  ColorNoiseGenerationState generation_state_{ColorNoiseGenerationState::IDLE};
+  EventGroupHandle_t event_group_{nullptr};
+  QueueHandle_t controls_queue_{nullptr};
+  TaskHandle_t generate_task_handle_{nullptr};
+  StaticTask_t generate_task_stack_;
+  StackType_t *generate_task_stack_buffer_{nullptr};
+  size_t total_samples_to_generate_{0};  // 0 = infinite playback, >0 = stop after this many samples
+  size_t samples_generated_{0};          // Counter for tracking playback progress
+  // Brown noise state
+  int32_t brown_y_accumulator_{0};
+  int32_t brown_leakage_{0};
+  int32_t brown_scaling_{0};
+  // Pink noise state (Voss-McCartney algorithm with 5 octave generators)
+  std::array<int32_t, 7> pink_buffers_{};
+  int32_t amplitude_q15_{29490};
 
   static void generate_task(void *params);
 

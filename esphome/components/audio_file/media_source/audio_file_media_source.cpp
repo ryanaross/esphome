@@ -141,12 +141,10 @@ void AudioFileMediaSource::loop() {
           return;
         }
 
-        auto *params = new DecodeTaskParams{this};
-        this->decode_task_handle_ = xTaskCreateStatic(decode_task, "AudioFileDec", DECODE_TASK_STACK_SIZE, params, 1,
+        this->decode_task_handle_ = xTaskCreateStatic(decode_task, "AudioFileDec", DECODE_TASK_STACK_SIZE, this, 1,
                                                       this->decode_task_stack_buffer_, &this->decode_task_stack_);
         if (this->decode_task_handle_ == nullptr) {
           ESP_LOGE(TAG, "Failed to create decode task");
-          delete params;
           this->mark_failed();
           return;
         }
@@ -244,9 +242,7 @@ media_source::MediaSourceCapabilities AudioFileMediaSource::get_capabilities() {
 }
 
 void AudioFileMediaSource::decode_task(void *params) {
-  auto *task_params = static_cast<DecodeTaskParams *>(params);
-  AudioFileMediaSource *this_source = task_params->source;
-  delete task_params;
+  AudioFileMediaSource *this_source = static_cast<AudioFileMediaSource *>(params);
 
   {
     xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STARTING);

@@ -131,7 +131,7 @@ bool HTTPMediaSource::play_uri(const std::string &uri) {
 
   // Queue playback start
   ControlMessage message = {.control = SourceControls::START, .uri = new std::string(uri)};
-  if (xQueueSend(this->pipeline_ctx_.controls_queue, &message, 0) != pdTRUE) {
+  if (xQueueSend(this->controls_queue_, &message, 0) != pdTRUE) {
     delete message.uri;
     ESP_LOGE(TAG, "Failed to queue play command");
     return false;
@@ -144,41 +144,39 @@ void HTTPMediaSource::setup() {
   this->disable_loop();
 
   // Create event group and queue upfront so they're available when play_uri is called
-  this->pipeline_ctx_.event_group = xEventGroupCreate();
-  this->pipeline_ctx_.controls_queue = xQueueCreate(3, sizeof(ControlMessage));
+  this->event_group_ = xEventGroupCreate();
+  this->controls_queue_ = xQueueCreate(3, sizeof(ControlMessage));
 }
 
 void HTTPMediaSource::loop() {
-  auto &ctx = this->pipeline_ctx_;
-
   // Process control messages
   ControlMessage incoming_control;
-  if (xQueueReceive(ctx.controls_queue, &incoming_control, 0)) {
+  if (xQueueReceive(this->controls_queue_, &incoming_control, 0)) {
     switch (incoming_control.control) {
       case SourceControls::START:
         if (incoming_control.uri != nullptr) {
-          ctx.current_uri = *incoming_control.uri;
+          this->current_uri_ = *incoming_control.uri;
           delete incoming_control.uri;
         }
-        ctx.decoding_state = HTTPDecodingState::START_TASKS;
+        this->decoding_state_ = HTTPDecodingState::START_TASKS;
         break;
       case SourceControls::STOP:
-        if (ctx.decoding_state == HTTPDecodingState::DECODING) {
-          xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_STOP);
+        if (this->decoding_state_ == HTTPDecodingState::DECODING) {
+          xEventGroupSetBits(this->event_group_, EventGroupBits::COMMAND_STOP);
         }
         break;
       case SourceControls::PAUSE:
-        if ((ctx.decoding_state == HTTPDecodingState::DECODING) &&
+        if ((this->decoding_state_ == HTTPDecodingState::DECODING) &&
             (this->get_state() == media_source::MediaSourceState::PLAYING)) {
-          xEventGroupSetBits(ctx.event_group, EventGroupBits::COMMAND_PAUSE);
+          xEventGroupSetBits(this->event_group_, EventGroupBits::COMMAND_PAUSE);
           this->set_state_(media_source::MediaSourceState::PAUSED);
         }
         break;
       case SourceControls::RESUME:
-        if ((ctx.decoding_state == HTTPDecodingState::DECODING) &&
+        if ((this->decoding_state_ == HTTPDecodingState::DECODING) &&
             (this->get_state() == media_source::MediaSourceState::PAUSED)) {
           // Clear the pause command bit to resume
-          xEventGroupClearBits(ctx.event_group, EventGroupBits::COMMAND_PAUSE);
+          xEventGroupClearBits(this->event_group_, EventGroupBits::COMMAND_PAUSE);
           this->set_state_(media_source::MediaSourceState::PLAYING);
         }
         break;
@@ -186,83 +184,79 @@ void HTTPMediaSource::loop() {
   }
 
   // Process pipeline state machine
-  switch (ctx.decoding_state) {
+  switch (this->decoding_state_) {
     case HTTPDecodingState::START_TASKS: {
       // Start the read task
-      if (ctx.read_task_handle == nullptr) {
-        xEventGroupClearBits(ctx.event_group, ALL_BITS);
-        if (ctx.read_task_stack_buffer == nullptr) {
+      if (this->read_task_handle_ == nullptr) {
+        xEventGroupClearBits(this->event_group_, ALL_BITS);
+        if (this->read_task_stack_buffer_ == nullptr) {
           // Reader task uses HttpContainer which uses esp_http_client. This crashes on IDF 5.4 if the task
           // stack is in PSRAM. As a workaround, always allocate the read task in internal memory.
           RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-          ctx.read_task_stack_buffer = stack_allocator.allocate(READ_TASK_STACK_SIZE);
+          this->read_task_stack_buffer_ = stack_allocator.allocate(READ_TASK_STACK_SIZE);
         }
-        if (ctx.read_task_stack_buffer == nullptr) {
+        if (this->read_task_stack_buffer_ == nullptr) {
           ESP_LOGE(TAG, "Failed to allocate read task stack");
           this->mark_failed();
           return;
         }
 
-        auto *params = new HTTPTaskParams{this};
-        ctx.read_task_handle = xTaskCreateStatic(read_task, "HTTPRead", READ_TASK_STACK_SIZE, params, 1,
-                                                 ctx.read_task_stack_buffer, &ctx.read_task_stack);
-        if (ctx.read_task_handle == nullptr) {
+        this->read_task_handle_ = xTaskCreateStatic(read_task, "HTTPRead", READ_TASK_STACK_SIZE, this, 1,
+                                                    this->read_task_stack_buffer_, &this->read_task_stack_);
+        if (this->read_task_handle_ == nullptr) {
           ESP_LOGE(TAG, "Failed to create read task");
-          delete params;
           this->mark_failed();
           return;
         }
       }
 
       // Start the decode task
-      if (ctx.decode_task_handle == nullptr) {
-        if (ctx.decode_task_stack_buffer == nullptr) {
+      if (this->decode_task_handle_ == nullptr) {
+        if (this->decode_task_stack_buffer_ == nullptr) {
           if (this->task_stack_in_psram_) {
             RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
-            ctx.decode_task_stack_buffer = stack_allocator.allocate(DECODE_TASK_STACK_SIZE);
+            this->decode_task_stack_buffer_ = stack_allocator.allocate(DECODE_TASK_STACK_SIZE);
           } else {
             RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-            ctx.decode_task_stack_buffer = stack_allocator.allocate(DECODE_TASK_STACK_SIZE);
+            this->decode_task_stack_buffer_ = stack_allocator.allocate(DECODE_TASK_STACK_SIZE);
           }
         }
-        if (ctx.decode_task_stack_buffer == nullptr) {
+        if (this->decode_task_stack_buffer_ == nullptr) {
           ESP_LOGE(TAG, "Failed to allocate decode task stack");
           this->mark_failed();
           return;
         }
 
-        auto *params = new HTTPTaskParams{this};
-        ctx.decode_task_handle = xTaskCreateStatic(decode_task, "HTTPDecode", DECODE_TASK_STACK_SIZE, params, 1,
-                                                   ctx.decode_task_stack_buffer, &ctx.decode_task_stack);
-        if (ctx.decode_task_handle == nullptr) {
+        this->decode_task_handle_ = xTaskCreateStatic(decode_task, "HTTPDecode", DECODE_TASK_STACK_SIZE, this, 1,
+                                                      this->decode_task_stack_buffer_, &this->decode_task_stack_);
+        if (this->decode_task_handle_ == nullptr) {
           ESP_LOGE(TAG, "Failed to create decode task");
-          delete params;
           this->mark_failed();
           return;
         }
       }
 
       ESP_LOGD(TAG, "Started read and decode tasks");
-      ctx.decoding_state = HTTPDecodingState::DECODING;
+      this->decoding_state_ = HTTPDecodingState::DECODING;
       break;
     }
     case HTTPDecodingState::DECODING: {
-      EventBits_t event_bits = xEventGroupGetBits(ctx.event_group);
+      EventBits_t event_bits = xEventGroupGetBits(this->event_group_);
 
       if (event_bits & TASK_STARTING) {
         ESP_LOGD(TAG, "Pipeline starting");
-        xEventGroupClearBits(ctx.event_group, TASK_STARTING);
+        xEventGroupClearBits(this->event_group_, TASK_STARTING);
       }
 
       if (event_bits & TASK_RUNNING) {
         ESP_LOGD(TAG, "Pipeline running");
-        xEventGroupClearBits(ctx.event_group, TASK_RUNNING);
+        xEventGroupClearBits(this->event_group_, TASK_RUNNING);
         this->set_state_(media_source::MediaSourceState::PLAYING);
       }
 
       if (event_bits & (READER_ERROR | DECODER_ERROR)) {
         ESP_LOGE(TAG, "Pipeline error occurred during playback");
-        xEventGroupClearBits(ctx.event_group, READER_ERROR | DECODER_ERROR);
+        xEventGroupClearBits(this->event_group_, READER_ERROR | DECODER_ERROR);
         this->set_state_(media_source::MediaSourceState::ERROR);
       }
 
@@ -271,36 +265,36 @@ void HTTPMediaSource::loop() {
         ESP_LOGD(TAG, "Both tasks finished");
 
         // Delete tasks
-        if (ctx.read_task_handle != nullptr) {
-          vTaskDelete(ctx.read_task_handle);
-          ctx.read_task_handle = nullptr;
-          if (ctx.read_task_stack_buffer != nullptr) {
+        if (this->read_task_handle_ != nullptr) {
+          vTaskDelete(this->read_task_handle_);
+          this->read_task_handle_ = nullptr;
+          if (this->read_task_stack_buffer_ != nullptr) {
             RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-            stack_allocator.deallocate(ctx.read_task_stack_buffer, READ_TASK_STACK_SIZE);
-            ctx.read_task_stack_buffer = nullptr;
+            stack_allocator.deallocate(this->read_task_stack_buffer_, READ_TASK_STACK_SIZE);
+            this->read_task_stack_buffer_ = nullptr;
           }
         }
 
-        if (ctx.decode_task_handle != nullptr) {
-          vTaskDelete(ctx.decode_task_handle);
-          ctx.decode_task_handle = nullptr;
-          if (ctx.decode_task_stack_buffer != nullptr) {
+        if (this->decode_task_handle_ != nullptr) {
+          vTaskDelete(this->decode_task_handle_);
+          this->decode_task_handle_ = nullptr;
+          if (this->decode_task_stack_buffer_ != nullptr) {
             if (this->task_stack_in_psram_) {
               RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_EXTERNAL);
-              stack_allocator.deallocate(ctx.decode_task_stack_buffer, DECODE_TASK_STACK_SIZE);
+              stack_allocator.deallocate(this->decode_task_stack_buffer_, DECODE_TASK_STACK_SIZE);
             } else {
               RAMAllocator<StackType_t> stack_allocator(RAMAllocator<StackType_t>::ALLOC_INTERNAL);
-              stack_allocator.deallocate(ctx.decode_task_stack_buffer, DECODE_TASK_STACK_SIZE);
+              stack_allocator.deallocate(this->decode_task_stack_buffer_, DECODE_TASK_STACK_SIZE);
             }
-            ctx.decode_task_stack_buffer = nullptr;
+            this->decode_task_stack_buffer_ = nullptr;
           }
         }
 
         // Clear the finished and stop bits now that both tasks are cleaned up
-        xEventGroupClearBits(ctx.event_group, READER_FINISHED | DECODER_FINISHED | COMMAND_STOP | COMMAND_PAUSE);
+        xEventGroupClearBits(this->event_group_, READER_FINISHED | DECODER_FINISHED | COMMAND_STOP | COMMAND_PAUSE);
 
         this->set_state_(media_source::MediaSourceState::IDLE);
-        ctx.decoding_state = HTTPDecodingState::IDLE;
+        this->decoding_state_ = HTTPDecodingState::IDLE;
       }
       break;
     }
@@ -311,14 +305,13 @@ void HTTPMediaSource::loop() {
   }
 
   // Check if we should disable loop when pipeline is idle
-  if (ctx.decoding_state == HTTPDecodingState::IDLE) {
+  if (this->decoding_state_ == HTTPDecodingState::IDLE) {
     this->disable_loop();
   }
 }
 
 void HTTPMediaSource::handle_command(media_source::MediaSourceCommand command) {
-  auto &ctx = this->pipeline_ctx_;
-  if (ctx.controls_queue == nullptr) {
+  if (this->controls_queue_ == nullptr) {
     return;
   }
 
@@ -327,20 +320,20 @@ void HTTPMediaSource::handle_command(media_source::MediaSourceCommand command) {
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_END:
       // Intentional fallthrough
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP: {
-      if (ctx.decoding_state == HTTPDecodingState::DECODING) {
+      if (this->decoding_state_ == HTTPDecodingState::DECODING) {
         message.control = SourceControls::STOP;
-        xQueueSend(ctx.controls_queue, &message, 0);
+        xQueueSend(this->controls_queue_, &message, 0);
       }
       break;
     }
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PAUSE: {
       message.control = SourceControls::PAUSE;
-      xQueueSend(ctx.controls_queue, &message, 0);
+      xQueueSend(this->controls_queue_, &message, 0);
       break;
     }
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY: {
       message.control = SourceControls::RESUME;
-      xQueueSend(ctx.controls_queue, &message, 0);
+      xQueueSend(this->controls_queue_, &message, 0);
       break;
     }
     default:
@@ -355,18 +348,14 @@ media_source::MediaSourceCapabilities HTTPMediaSource::get_capabilities() {
 }
 
 void HTTPMediaSource::read_task(void *params) {
-  auto *task_params = static_cast<HTTPTaskParams *>(params);
-  HTTPMediaSource *this_source = task_params->source;
-  delete task_params;
-
-  auto &ctx = this_source->pipeline_ctx_;
+  HTTPMediaSource *this_source = static_cast<HTTPMediaSource *>(params);
 
   // Holds ring buffer alive until the decode task acquires its own shared_ptr reference.
   // Declared outside the inner scope so it survives past transfer_buffer cleanup.
   std::shared_ptr<RingBuffer> ring_buffer_guard;
 
   {  // Ensure all C++ objects fall out of scope and deallocate
-    xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_STARTING);
+    xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STARTING);
 
     // Get the parent HttpRequestComponent to make HTTP requests
     HttpRequestComponent *http_client = this_source->get_parent();
@@ -377,11 +366,11 @@ void HTTPMediaSource::read_task(void *params) {
     // Start HTTP request, retrying on transient failures (e.g., EAGAIN during header fetch)
     std::shared_ptr<HttpContainer> container;
     for (uint8_t attempt = 0; attempt < MAX_CONNECTION_ATTEMPTS; ++attempt) {
-      if (xEventGroupGetBits(ctx.event_group) & EventGroupBits::COMMAND_STOP) {
+      if (xEventGroupGetBits(this_source->event_group_) & EventGroupBits::COMMAND_STOP) {
         break;
       }
 
-      container = http_client->get(ctx.current_uri, {}, collect_headers);
+      container = http_client->get(this_source->current_uri_, {}, collect_headers);
 
       if (container != nullptr && is_success(container->status_code)) {
         break;  // Success
@@ -406,7 +395,7 @@ void HTTPMediaSource::read_task(void *params) {
       if (container != nullptr) {
         container->end();
       }
-      xEventGroupSetBits(ctx.event_group,
+      xEventGroupSetBits(this_source->event_group_,
                          EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED | EventGroupBits::COMMAND_STOP);
       while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -415,12 +404,12 @@ void HTTPMediaSource::read_task(void *params) {
 
     // Detect audio file type from Content-Type header or URL
     std::string content_type = container->get_response_header("content-type");
-    ctx.current_audio_file_type = detect_audio_type(content_type, ctx.current_uri);
+    this_source->current_audio_file_type_ = detect_audio_type(content_type, this_source->current_uri_);
 
-    if (ctx.current_audio_file_type == audio::AudioFileType::NONE) {
+    if (this_source->current_audio_file_type_ == audio::AudioFileType::NONE) {
       ESP_LOGE(TAG, "Unable to determine audio file type");
       container->end();
-      xEventGroupSetBits(ctx.event_group,
+      xEventGroupSetBits(this_source->event_group_,
                          EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED | EventGroupBits::COMMAND_STOP);
       while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -435,7 +424,7 @@ void HTTPMediaSource::read_task(void *params) {
     if (transfer_buffer == nullptr) {
       ESP_LOGE(TAG, "Failed to create transfer buffer");
       container->end();
-      xEventGroupSetBits(ctx.event_group,
+      xEventGroupSetBits(this_source->event_group_,
                          EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED | EventGroupBits::COMMAND_STOP);
       while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -444,27 +433,27 @@ void HTTPMediaSource::read_task(void *params) {
 
     {  // Ensures temp_ring_buffer falls out of scope and deallocates
       std::shared_ptr<RingBuffer> temp_ring_buffer;
-      if (ctx.raw_file_ring_buffer.expired()) {
+      if (this_source->raw_file_ring_buffer_.expired()) {
         temp_ring_buffer = RingBuffer::create(this_source->buffer_size_);
-        ctx.raw_file_ring_buffer = temp_ring_buffer;
+        this_source->raw_file_ring_buffer_ = temp_ring_buffer;
       }
 
-      if (ctx.raw_file_ring_buffer.expired()) {
+      if (this_source->raw_file_ring_buffer_.expired()) {
         ESP_LOGE(TAG, "Failed to create ring buffer");
         container->end();
-        xEventGroupSetBits(ctx.event_group, EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED |
-                                                EventGroupBits::COMMAND_STOP);
+        xEventGroupSetBits(this_source->event_group_, EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED |
+                                                          EventGroupBits::COMMAND_STOP);
         while (true) {
           vTaskDelay(pdMS_TO_TICKS(1000));
         }
       }
 
-      transfer_buffer->set_sink(ctx.raw_file_ring_buffer);
+      transfer_buffer->set_sink(this_source->raw_file_ring_buffer_);
       ring_buffer_guard = temp_ring_buffer;
     }
 
     // Signal that reader is ready
-    xEventGroupSetBits(ctx.event_group, EventGroupBits::READER_READY);
+    xEventGroupSetBits(this_source->event_group_, EventGroupBits::READER_READY);
 
     uint32_t last_data_time = millis();
 
@@ -474,7 +463,7 @@ void HTTPMediaSource::read_task(void *params) {
     // - esp_http_client_read() blocks, so tight-spinning isn't a concern
     // - Transient errors (e.g., -ESP_ERR_HTTP_EAGAIN) should retry, not fail immediately
     while (true) {
-      EventBits_t event_bits = xEventGroupGetBits(ctx.event_group);
+      EventBits_t event_bits = xEventGroupGetBits(this_source->event_group_);
 
       if (event_bits & EventGroupBits::COMMAND_STOP) {
         break;
@@ -492,7 +481,7 @@ void HTTPMediaSource::read_task(void *params) {
         } else if (received_len == 0 && container->is_read_complete()) {
           // Flush remaining buffered data to the ring buffer, retrying until empty
           while (transfer_buffer->available() > 0) {
-            if (xEventGroupGetBits(ctx.event_group) & EventGroupBits::COMMAND_STOP) {
+            if (xEventGroupGetBits(this_source->event_group_) & EventGroupBits::COMMAND_STOP) {
               break;
             }
             transfer_buffer->transfer_data_to_sink(pdMS_TO_TICKS(READ_WRITE_TIMEOUT_MS), false);
@@ -501,7 +490,7 @@ void HTTPMediaSource::read_task(void *params) {
           break;
         } else if (millis() - last_data_time >= CONNECTION_TIMEOUT_MS) {
           ESP_LOGE(TAG, "Reader timed out");
-          xEventGroupSetBits(ctx.event_group, EventGroupBits::READER_ERROR | EventGroupBits::COMMAND_STOP);
+          xEventGroupSetBits(this_source->event_group_, EventGroupBits::READER_ERROR | EventGroupBits::COMMAND_STOP);
           break;
         }
         // else: no data yet or transient error (e.g., EAGAIN), loop continues
@@ -513,11 +502,12 @@ void HTTPMediaSource::read_task(void *params) {
     container->end();
   }
   // Set READER_FINISHED bit to signal we're done
-  xEventGroupSetBits(ctx.event_group, EventGroupBits::READER_FINISHED);
+  xEventGroupSetBits(this_source->event_group_, EventGroupBits::READER_FINISHED);
 
   // Wait for decode task to acquire the ring buffer shared_ptr before we release ours
-  xEventGroupWaitBits(ctx.event_group, EventGroupBits::DECODER_RINGBUF_ACQUIRED | EventGroupBits::COMMAND_STOP, pdFALSE,
-                      pdFALSE, portMAX_DELAY);
+  xEventGroupWaitBits(this_source->event_group_,
+                      EventGroupBits::DECODER_RINGBUF_ACQUIRED | EventGroupBits::COMMAND_STOP, pdFALSE, pdFALSE,
+                      portMAX_DELAY);
 
   // Safe to release now - decode task has acquired its own shared_ptr (or exited)
   ring_buffer_guard.reset();
@@ -528,16 +518,13 @@ void HTTPMediaSource::read_task(void *params) {
 }
 
 void HTTPMediaSource::decode_task(void *params) {
-  auto *task_params = static_cast<HTTPTaskParams *>(params);
-  HTTPMediaSource *this_source = task_params->source;
-  delete task_params;
-  auto &ctx = this_source->pipeline_ctx_;
+  HTTPMediaSource *this_source = static_cast<HTTPMediaSource *>(params);
 
   {  // Ensure all C++ objects fall out of scope and deallocate
 
     // Wait until the reader notifies us that it's ready or receive a stop command
     xEventGroupWaitBits(
-        ctx.event_group,
+        this_source->event_group_,
         EventGroupBits::READER_READY | EventGroupBits::COMMAND_STOP,  // Bit message to read
         pdFALSE,                                                      // Don't clear the bit on exit
         pdFALSE,                                                      // Wait for any bit
@@ -545,13 +532,14 @@ void HTTPMediaSource::decode_task(void *params) {
             CONNECTION_TIMEOUT_MS));  // Timeout to avoid indefinitely waiting for the reader task to get ready
 
     // Read bits before clearing READER_READY so we can detect timeout vs actual readiness
-    EventBits_t event_bits = xEventGroupGetBits(ctx.event_group);
-    xEventGroupClearBits(ctx.event_group, EventGroupBits::READER_READY);
+    EventBits_t event_bits = xEventGroupGetBits(this_source->event_group_);
+    xEventGroupClearBits(this_source->event_group_, EventGroupBits::READER_READY);
 
     // Exit if stop was requested or if READER_READY was never set (timeout)
     if ((event_bits & EventGroupBits::COMMAND_STOP) || !(event_bits & EventGroupBits::READER_READY)) {
       // Signal reader task so it doesn't wait forever for us to acquire the ring buffer
-      xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_RINGBUF_ACQUIRED | EventGroupBits::DECODER_FINISHED);
+      xEventGroupSetBits(this_source->event_group_,
+                         EventGroupBits::DECODER_RINGBUF_ACQUIRED | EventGroupBits::DECODER_FINISHED);
       while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
       }
@@ -561,29 +549,29 @@ void HTTPMediaSource::decode_task(void *params) {
     std::unique_ptr<audio::AudioDecoder> decoder =
         make_unique<audio::AudioDecoder>(transfer_buffer_size, transfer_buffer_size);
 
-    esp_err_t err = decoder->start(ctx.current_audio_file_type);
-    decoder->add_source(ctx.raw_file_ring_buffer);
+    esp_err_t err = decoder->start(this_source->current_audio_file_type_);
+    decoder->add_source(this_source->raw_file_ring_buffer_);
 
     // Signal reader task that we've acquired the ring buffer shared_ptr
-    xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_RINGBUF_ACQUIRED);
+    xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_RINGBUF_ACQUIRED);
 
     if (err != ESP_OK) {
       decoder.reset();
       ESP_LOGE(TAG, "Failed to start decoder: %s", esp_err_to_name(err));
-      xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_ERROR | EventGroupBits::DECODER_FINISHED |
-                                              EventGroupBits::COMMAND_STOP);
+      xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_ERROR | EventGroupBits::DECODER_FINISHED |
+                                                        EventGroupBits::COMMAND_STOP);
       while (true) {
         vTaskDelay(pdMS_TO_TICKS(1000));
       }
     }
 
-    xEventGroupSetBits(ctx.event_group, EventGroupBits::TASK_RUNNING);
+    xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_RUNNING);
 
     AudioSinkAdapter audio_sink;
     bool has_stream_info = false;
 
     while (true) {
-      event_bits = xEventGroupGetBits(ctx.event_group);
+      event_bits = xEventGroupGetBits(this_source->event_group_);
 
       if (event_bits & EventGroupBits::COMMAND_STOP) {
         break;
@@ -599,7 +587,7 @@ void HTTPMediaSource::decode_task(void *params) {
         break;
       } else if (decoder_state == audio::AudioDecoderState::FAILED) {
         ESP_LOGE(TAG, "Decoding failed");
-        xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
+        xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
         break;
       }
 
@@ -611,11 +599,11 @@ void HTTPMediaSource::decode_task(void *params) {
 
         if (stream_info.get_bits_per_sample() != 16) {
           ESP_LOGE(TAG, "Incompatible bits per sample. Only 16 bits per sample is supported");
-          xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
+          xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
           break;
         } else if ((stream_info.get_channels() > 2)) {
           ESP_LOGE(TAG, "Incompatible number of channels. Only 1 or 2 channel audio is supported.");
-          xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
+          xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
           break;
         } else {
           ESP_LOGD(TAG, "Bits per sample: %d, Channels: %d, Sample rate: %d", stream_info.get_bits_per_sample(),
@@ -628,14 +616,15 @@ void HTTPMediaSource::decode_task(void *params) {
             esp_err_t err = decoder->add_sink(&audio_sink);
             if (err != ESP_OK) {
               ESP_LOGE(TAG, "Failed to add sink to decoder: %s", esp_err_to_name(err));
-              xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
+              xEventGroupSetBits(this_source->event_group_,
+                                 EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
               break;
             }
             ESP_LOGD(TAG, "Successfully added callback sink to decoder");
           } else {
             ESP_LOGE(TAG, "Listener is not set! Make sure the HTTPMediaSource is added to media_sources "
                           "in your YAML config");
-            xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
+            xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_ERROR | EventGroupBits::COMMAND_STOP);
             break;
           }
         }
@@ -645,7 +634,7 @@ void HTTPMediaSource::decode_task(void *params) {
     decoder.reset();
   }
   // Set DECODER_FINISHED bit to signal we're done
-  xEventGroupSetBits(ctx.event_group, EventGroupBits::DECODER_FINISHED);
+  xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_FINISHED);
 
   while (true) {
     vTaskDelay(pdMS_TO_TICKS(1000));
