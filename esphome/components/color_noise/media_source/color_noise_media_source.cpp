@@ -110,7 +110,7 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
 
     // Simple query parser for seed parameter
     size_t seed_pos = query.find("seed=");
-    if (seed_pos != std::string::npos) {
+    if (seed_pos != std::string::npos && (seed_pos == 0 || query[seed_pos - 1] == '&')) {
       seed_pos += 5;  // Skip "seed="
       size_t end_pos = query.find('&', seed_pos);
       size_t len = (end_pos == std::string::npos) ? std::string::npos : end_pos - seed_pos;
@@ -120,7 +120,7 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
 
     // Simple query parser for duration parameter
     size_t duration_pos = query.find("duration=");
-    if (duration_pos != std::string::npos) {
+    if (duration_pos != std::string::npos && (duration_pos == 0 || query[duration_pos - 1] == '&')) {
       duration_pos += 9;  // Skip "duration="
       size_t end_pos = query.find('&', duration_pos);
       size_t len = (end_pos == std::string::npos) ? std::string::npos : end_pos - duration_pos;
