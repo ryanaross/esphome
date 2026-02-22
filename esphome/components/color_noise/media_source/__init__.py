@@ -1,7 +1,7 @@
 """Color noise media source component for ESPHome."""
 
 import esphome.codegen as cg
-from esphome.components import media_source
+from esphome.components import media_source, psram
 import esphome.config_validation as cv
 from esphome.const import CONF_SAMPLE_RATE, CONF_TASK_STACK_IN_PSRAM
 
@@ -25,7 +25,9 @@ CONFIG_SCHEMA = cv.All(
                 min=8000, max=48000
             ),
             cv.Optional(CONF_DEFAULT_SEED): cv.uint32_t,
-            cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.boolean,
+            cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.All(
+                cv.boolean, cv.requires_component(psram.DOMAIN)
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA),

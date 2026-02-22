@@ -1,5 +1,5 @@
 import esphome.codegen as cg
-from esphome.components import media_source, network
+from esphome.components import media_source, network, psram
 import esphome.config_validation as cv
 from esphome.const import CONF_BUFFER_SIZE, CONF_ID, CONF_TASK_STACK_IN_PSRAM
 from esphome.types import ConfigType
@@ -33,7 +33,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_BUFFER_SIZE, default=51200): cv.int_range(
                 min=8 * 1024, max=500 * 1024
             ),
-            cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.boolean,
+            cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.All(
+                cv.boolean, cv.requires_component(psram.DOMAIN)
+            ),
         }
     )
     .extend(cv.COMPONENT_SCHEMA),
