@@ -3,7 +3,7 @@
 import esphome.codegen as cg
 from esphome.components import media_source, psram
 import esphome.config_validation as cv
-from esphome.const import CONF_SAMPLE_RATE, CONF_TASK_STACK_IN_PSRAM
+from esphome.const import CONF_ID, CONF_SAMPLE_RATE, CONF_TASK_STACK_IN_PSRAM
 
 CODEOWNERS = ["@kahrendt"]
 DEPENDENCIES = ["media_source", "audio"]
@@ -37,7 +37,7 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     """Generate code for color noise media source."""
-    var = cg.new_Pvariable(config[cv.CONF_ID])
+    var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await media_source.register_media_source(var, config)
 

@@ -50,8 +50,7 @@ async def to_code(config):
     await media_source.register_media_source(var, config)
     await cg.register_parented(var, config[CONF_HTTP_REQUEST_ID])
 
-    if CONF_BUFFER_SIZE in config:
-        cg.add(var.set_buffer_size(config[CONF_BUFFER_SIZE]))
+    cg.add(var.set_buffer_size(config[CONF_BUFFER_SIZE]))
 
     if CONF_TASK_STACK_IN_PSRAM in config:
         cg.add(var.set_task_stack_in_psram(config[CONF_TASK_STACK_IN_PSRAM]))
