@@ -1,7 +1,5 @@
 #include "audio_file_media_source.h"
 
-#ifdef USE_ESP_IDF
-
 #include "esphome/components/audio/audio_decoder.h"
 
 #include <cstring>
@@ -335,5 +333,3 @@ void AudioFileMediaSource::decode_task(void *params) {
 
 }  // namespace audio_file
 }  // namespace esphome
-
-#endif

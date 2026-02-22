@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef USE_ESP_IDF
-
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/media_source/media_source.h"
 #include "esphome/core/component.h"
@@ -76,5 +74,3 @@ class HTTPMediaSource : public Component, public media_source::MediaSource, publ
 
 }  // namespace http_request
 }  // namespace esphome
-
-#endif

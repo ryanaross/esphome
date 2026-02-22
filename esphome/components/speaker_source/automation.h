@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef USE_ESP_IDF
-
 #include "esphome/core/automation.h"
 #include "speaker_source_media_player.h"
 
@@ -25,5 +23,3 @@ template<typename... Ts> class SetPlaylistDelayAction : public Action<Ts...> {
 
 }  // namespace speaker_source
 }  // namespace esphome
-
-#endif

@@ -1,7 +1,5 @@
 #pragma once
 
-#ifdef USE_ESP_IDF
-
 #include "esphome/components/audio/audio.h"
 
 #include "esphome/components/media_source/media_source.h"
@@ -196,5 +194,3 @@ class SpeakerSourceMediaPlayer : public Component,
 
 }  // namespace speaker_source
 }  // namespace esphome
-
-#endif

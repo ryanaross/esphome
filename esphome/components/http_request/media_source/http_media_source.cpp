@@ -1,7 +1,5 @@
 #include "http_media_source.h"
 
-#ifdef USE_ESP_IDF
-
 #include "esphome/components/audio/audio_decoder.h"
 #include "esphome/components/audio/audio_transfer_buffer.h"
 #include "esphome/core/log.h"
@@ -654,5 +652,3 @@ void HTTPMediaSource::decode_task(void *params) {
 
 }  // namespace http_request
 }  // namespace esphome
-
-#endif
