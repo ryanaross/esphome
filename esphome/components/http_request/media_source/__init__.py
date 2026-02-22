@@ -1,5 +1,5 @@
 import esphome.codegen as cg
-from esphome.components import media_source
+from esphome.components import media_source, network
 import esphome.config_validation as cv
 from esphome.const import CONF_BUFFER_SIZE, CONF_ID, CONF_TASK_STACK_IN_PSRAM
 from esphome.types import ConfigType
@@ -52,3 +52,5 @@ async def to_code(config):
 
     if CONF_TASK_STACK_IN_PSRAM in config:
         cg.add(var.set_task_stack_in_psram(config[CONF_TASK_STACK_IN_PSRAM]))
+
+    network.require_high_performance_networking()
