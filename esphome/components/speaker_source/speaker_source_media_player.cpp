@@ -819,9 +819,9 @@ void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state) {
 
   if (old_mute_state != mute_state) {
     if (mute_state) {
-      this->defer([this]() { this->mute_trigger_->trigger(); });
+      this->defer([this]() { this->mute_trigger_.trigger(); });
     } else {
-      this->defer([this]() { this->unmute_trigger_->trigger(); });
+      this->defer([this]() { this->unmute_trigger_.trigger(); });
     }
   }
 }
@@ -855,7 +855,7 @@ void SpeakerSourceMediaPlayer::set_volume_(float volume, bool publish) {
     this->set_mute_state_(false);
   }
 
-  this->defer([this, volume]() { this->volume_trigger_->trigger(volume); });
+  this->defer([this, volume]() { this->volume_trigger_.trigger(volume); });
 }
 
 size_t SpeakerSourceMediaPlayer::get_playlist_position_(uint8_t pipeline) const {

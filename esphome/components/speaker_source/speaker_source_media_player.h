@@ -126,9 +126,9 @@ class SpeakerSourceMediaPlayer : public Component,
     this->pipelines_[pipeline].format = format;
   }
 
-  Trigger<> *get_mute_trigger() const { return this->mute_trigger_; }
-  Trigger<> *get_unmute_trigger() const { return this->unmute_trigger_; }
-  Trigger<float> *get_volume_trigger() const { return this->volume_trigger_; }
+  Trigger<> *get_mute_trigger() { return &this->mute_trigger_; }
+  Trigger<> *get_unmute_trigger() { return &this->unmute_trigger_; }
+  Trigger<float> *get_volume_trigger() { return &this->volume_trigger_; }
 
   void set_playlist_delay_ms(uint8_t pipeline, uint32_t delay_ms);
 
@@ -194,9 +194,9 @@ class SpeakerSourceMediaPlayer : public Component,
   // Used to save volume/mute state for restoration on reboot
   ESPPreferenceObject pref_;
 
-  Trigger<> *mute_trigger_ = new Trigger<>();
-  Trigger<> *unmute_trigger_ = new Trigger<>();
-  Trigger<float> *volume_trigger_ = new Trigger<float>();
+  Trigger<> mute_trigger_;
+  Trigger<> unmute_trigger_;
+  Trigger<float> volume_trigger_;
 };
 
 }  // namespace speaker_source
