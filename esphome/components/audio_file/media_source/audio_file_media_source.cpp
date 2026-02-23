@@ -137,7 +137,9 @@ void AudioFileMediaSource::loop() {
         }
         if (this->decode_task_stack_buffer_ == nullptr) {
           ESP_LOGE(TAG, "Failed to allocate decode task stack");
-          this->mark_failed();
+          this->set_state_(media_source::MediaSourceState::ERROR);
+          this->decoding_state_ = AudioFileDecodingState::IDLE;
+          this->status_momentary_error("task_alloc", 15000);
           return;
         }
 
@@ -145,7 +147,9 @@ void AudioFileMediaSource::loop() {
                                                       this->decode_task_stack_buffer_, &this->decode_task_stack_);
         if (this->decode_task_handle_ == nullptr) {
           ESP_LOGE(TAG, "Failed to create decode task");
-          this->mark_failed();
+          this->set_state_(media_source::MediaSourceState::ERROR);
+          this->decoding_state_ = AudioFileDecodingState::IDLE;
+          this->status_momentary_error("task_create", 15000);
           return;
         }
       }

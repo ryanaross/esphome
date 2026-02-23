@@ -207,7 +207,9 @@ void ColorNoiseMediaSource::loop() {
         }
         if (this->generate_task_stack_buffer_ == nullptr) {
           ESP_LOGE(TAG, "Failed to allocate generate task stack");
-          this->mark_failed();
+          this->set_state_(media_source::MediaSourceState::ERROR);
+          this->generation_state_ = ColorNoiseGenerationState::IDLE;
+          this->status_momentary_error("task_alloc", 15000);
           return;
         }
 
@@ -215,7 +217,9 @@ void ColorNoiseMediaSource::loop() {
                                                         this->generate_task_stack_buffer_, &this->generate_task_stack_);
         if (this->generate_task_handle_ == nullptr) {
           ESP_LOGE(TAG, "Failed to create generate task");
-          this->mark_failed();
+          this->set_state_(media_source::MediaSourceState::ERROR);
+          this->generation_state_ = ColorNoiseGenerationState::IDLE;
+          this->status_momentary_error("task_create", 15000);
           return;
         }
       }
