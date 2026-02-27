@@ -122,12 +122,12 @@ class MediaSource {
 
   /// @brief Notify source that volume changed
   /// Called when volume changes from Home Assistant or another source
-  /// Most sources can ignore this. Override for smart sources like snapcast.
+  /// Most sources can ignore this. Override for smart sources like Sendspin.
   /// @param volume New volume level (0.0 to 1.0)
   virtual void notify_volume_changed(float volume) {}
 
   /// @brief Notify source that mute state changed
-  /// Most sources can ignore this. Override for smart sources like snapcast.
+  /// Most sources can ignore this. Override for smart sources like Sendspin.
   /// @param is_muted New mute state
   virtual void notify_mute_changed(bool is_muted) {}
 
