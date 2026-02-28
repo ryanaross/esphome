@@ -57,15 +57,15 @@ class MediaSourceListener {
                                  audio::AudioStreamInfo stream_info) = 0;
   // Used to notify listener of state changes
   virtual void on_media_state_changed(MediaSource *source, MediaSourceState state) = 0;
-  // Callbacks for smart sources that can adjust volume, mute state, or start streams based on external changes. Simple
-  // streams do not implement these.
+  // Callbacks from smart sources requesting the orchestrator to change volume, mute, or start a new URI.
+  // Simple sources never invoke these.
   virtual void on_volume_request(MediaSource *source, float volume) = 0;
   virtual void on_mute_request(MediaSource *source, bool is_muted) = 0;
   virtual void on_play_uri_request(MediaSource *source, const std::string &uri) = 0;
 };
 
 /// @brief Abstract base class for media sources
-/// MediaSource provides audio data to an orchestrator via the MediaSoruceListener interface. It also receives commands
+/// MediaSource provides audio data to an orchestrator via the MediaSourceListener interface. It also receives commands
 /// from the orchestrator to control playback.
 class MediaSource {
  public:
@@ -75,7 +75,7 @@ class MediaSource {
 
   /// @brief Start playing the given URI
   /// Sources should validate the URI and state, returning false if the source is busy.
-  /// The MediaPlayer is responsible for stopping active sources before starting a new one.
+  /// The orchestrator is responsible for stopping active sources before starting a new one.
   /// @param uri The URI to play; e.g., "http://stream_url"
   /// @return true if playback started successfully, false otherwise
   virtual bool play_uri(const std::string &uri) = 0;
@@ -102,7 +102,7 @@ class MediaSource {
   /// @return true if this source can handle the URI
   virtual bool can_handle(const std::string &uri) const = 0;
 
-  // === Listener: Source → Player ===
+  // === Listener: Source → Orchestrator ===
 
   /// @brief Set the listener that receives callbacks from this source
   /// @param listener Pointer to the MediaSourceListener implementation. Caller must ensure it outlives this source.
@@ -111,7 +111,7 @@ class MediaSource {
   /// @brief Get the current listener
   MediaSourceListener *get_listener() const { return this->listener_; }
 
-  // === Callbacks: Player → Source ===
+  // === Callbacks: Orchestrator → Source ===
 
   /// @brief Orchestrator interface to notify the source that volume changed
   /// Most sources can ignore this. Override for smart sources that track volume state.
@@ -131,8 +131,8 @@ class MediaSource {
   virtual void notify_audio_played(uint32_t frames, int64_t timestamp) {}
 
  protected:
-  /// @brief Helper to update state and notify listener
-  /// Sources should use this instead of directly modifying state_
+  /// @brief Update state and notify listener
+  /// This is the only way to change state_, ensuring listener notifications always fire.
   /// @param state New state to set
   void set_state_(MediaSourceState state) {
     if (this->state_ != state) {
@@ -143,6 +143,7 @@ class MediaSource {
     }
   }
 
+ private:
   MediaSourceState state_{MediaSourceState::IDLE};
   MediaSourceListener *listener_{nullptr};
 };
