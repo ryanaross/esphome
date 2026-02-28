@@ -287,8 +287,6 @@ void ColorNoiseMediaSource::handle_command(media_source::MediaSourceCommand comm
 
   ControlMessage message;
   switch (command) {
-    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_END:
-      // Intentional fallthrough
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP: {
       if (this->generation_state_ == ColorNoiseGenerationState::GENERATING) {
         message.control = SourceControls::STOP;

@@ -77,7 +77,7 @@ struct MediaPlayerControlCommand {
 
   union {
     std::string *uri;  // Owned pointer, must delete after xQueueReceive (for PLAY_URI and ENQUEUE_URI)
-    media_source::MediaSourceCommand source_command;
+    media_player::MediaPlayerCommand command;
   } data;
 };
 

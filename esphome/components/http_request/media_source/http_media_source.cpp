@@ -333,8 +333,6 @@ void HTTPMediaSource::handle_command(media_source::MediaSourceCommand command) {
 
   ControlMessage message;
   switch (command) {
-    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_END:
-      // Intentional fallthrough
     case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP: {
       if (this->decoding_state_ == HTTPDecodingState::DECODING) {
         message.control = SourceControls::STOP;
