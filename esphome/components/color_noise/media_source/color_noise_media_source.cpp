@@ -312,9 +312,7 @@ void ColorNoiseMediaSource::generate_task(void *params) {
       ESP_LOGE(TAG, "Listener is not set! Make sure the ColorNoiseMediaSource is added to "
                     "media_sources in your YAML config");
       xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     // Create output transfer buffer sized to store READ_WRITE_TIMEOUT_MS of audio
@@ -323,9 +321,7 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     if (!output_buffer) {
       ESP_LOGE(TAG, "Failed to allocate output transfer buffer");
       xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     AudioSinkAdapter audio_sink;
@@ -407,9 +403,7 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPING);
   }
   xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
-  while (true) {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
+  vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
 }
 
 }  // namespace color_noise
