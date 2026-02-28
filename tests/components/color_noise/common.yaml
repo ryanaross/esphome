@@ -1,0 +1,5 @@
+media_source:
+  - platform: color_noise
+    name: "Color Noise"
+    default_seed: 12345
+    sample_rate: 16000
