@@ -2,15 +2,18 @@
 
 #ifdef USE_ESP32
 
+#include "esphome/core/helpers.h"
+
 #include <algorithm>
 #include <cmath>
 
 namespace esphome {
 namespace color_noise {
 
-NoiseGenerator::NoiseGenerator(uint32_t seed, int32_t amplitude_q15) : amplitude_q15_(amplitude_q15) {
-  // xorshift32 doesn't work with zero state
-  this->prng_state_ = (seed == 0) ? 0xDEADBEEF : seed;
+NoiseGenerator::NoiseGenerator(int32_t amplitude_q15) : amplitude_q15_(amplitude_q15) {
+  // Seed from ESPHome's RNG; xorshift32 requires non-zero state
+  uint32_t seed = random_uint32();
+  this->prng_state_ = (seed == 0) ? 1 : seed;
 }
 
 void WhiteNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count) {
@@ -20,8 +23,7 @@ void WhiteNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count
   }
 }
 
-BrownNoiseGenerator::BrownNoiseGenerator(uint32_t seed, int32_t amplitude_q15, uint32_t sample_rate)
-    : NoiseGenerator(seed, amplitude_q15) {
+BrownNoiseGenerator::BrownNoiseGenerator(int32_t amplitude_q15, uint32_t sample_rate) : NoiseGenerator(amplitude_q15) {
   // Double precision is unnecessary, but avoids single precision so the calling task isn't locked to its current CPU
   // core on an ESP32
 

@@ -13,8 +13,6 @@ ColorNoiseMediaSource = color_noise_ns.class_(
     "ColorNoiseMediaSource", cg.Component, media_source.MediaSource
 )
 
-CONF_DEFAULT_SEED = "default_seed"
-
 CONFIG_SCHEMA = cv.All(
     media_source.media_source_schema(
         ColorNoiseMediaSource,
@@ -24,7 +22,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SAMPLE_RATE, default=16000): cv.int_range(
                 min=8000, max=48000
             ),
-            cv.Optional(CONF_DEFAULT_SEED): cv.uint32_t,
             cv.Optional(CONF_TASK_STACK_IN_PSRAM): cv.All(
                 cv.boolean, cv.requires_component(psram.DOMAIN)
             ),
@@ -42,9 +39,6 @@ async def to_code(config):
     await media_source.register_media_source(var, config)
 
     cg.add(var.set_sample_rate(config[CONF_SAMPLE_RATE]))
-
-    if CONF_DEFAULT_SEED in config:
-        cg.add(var.set_default_seed(config[CONF_DEFAULT_SEED]))
 
     if CONF_TASK_STACK_IN_PSRAM in config:
         cg.add(var.set_task_stack_in_psram(config[CONF_TASK_STACK_IN_PSRAM]))

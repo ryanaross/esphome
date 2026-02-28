@@ -36,7 +36,6 @@ enum class SourceControls : uint8_t {
 
 struct ControlMessage {
   SourceControls control;
-  uint32_t seed{0};
   size_t total_samples_to_generate{0};  // 0 = infinite playback
 };
 
@@ -92,27 +91,14 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
   // Store the noise type
   this->noise_type_ = noise_type;
 
-  // Parse URI for optional seed and duration parameters
-  // Format: color-noise://<type>/ or color-noise://<type>/?seed=12345&duration=10
+  // Parse URI for optional duration parameter
+  // Format: color-noise://<type>/ or color-noise://<type>/?duration=10
   // where <type> is 'white', 'brown', or 'pink'
-  uint32_t seed = this->default_seed_;
   uint32_t duration_seconds = 0;  // 0 = infinite playback
-
-  // If default seed is 0, generate a random seed
-  if (seed == 0) {
-    seed = random_uint32();
-  }
 
   size_t query_pos = uri.find('?');
   if (query_pos != std::string::npos) {
     size_t query_start = query_pos + 1;
-
-    // Simple query parser for seed parameter
-    size_t seed_pos = uri.find("seed=", query_start);
-    if (seed_pos != std::string::npos && (seed_pos == query_start || uri[seed_pos - 1] == '&')) {
-      // strtoul stops at the first non-digit character, so '&' or end-of-string terminates naturally
-      seed = std::strtoul(uri.c_str() + seed_pos + 5, nullptr, 10);
-    }
 
     // Simple query parser for duration parameter
     size_t duration_pos = uri.find("duration=", query_start);
@@ -134,14 +120,14 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
                                                                    : "pink";
 
   if (duration_seconds > 0) {
-    ESP_LOGD(TAG, "Playing %s noise with seed: %u, duration: %u seconds (%zu samples)", noise_type_name, seed,
-             duration_seconds, total_samples);
+    ESP_LOGD(TAG, "Playing %s noise, duration: %u seconds (%zu samples)", noise_type_name, duration_seconds,
+             total_samples);
   } else {
-    ESP_LOGD(TAG, "Playing %s noise with seed: %u (infinite playback)", noise_type_name, seed);
+    ESP_LOGD(TAG, "Playing %s noise (infinite playback)", noise_type_name);
   }
 
   // Queue playback start
-  ControlMessage message = {.control = SourceControls::START, .seed = seed, .total_samples_to_generate = total_samples};
+  ControlMessage message = {.control = SourceControls::START, .total_samples_to_generate = total_samples};
   xQueueSend(this->controls_queue_, &message, 0);
   this->enable_loop_soon_any_context();
   return true;
@@ -161,7 +147,6 @@ void ColorNoiseMediaSource::loop() {
   if (xQueueReceive(this->controls_queue_, &incoming_control, 0)) {
     switch (incoming_control.control) {
       case SourceControls::START:
-        this->seed_ = incoming_control.seed;
         this->total_samples_to_generate_ = incoming_control.total_samples_to_generate;
         this->samples_generated_ = 0;  // Reset sample counter
         this->paused_ = false;
@@ -353,14 +338,13 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     std::unique_ptr<NoiseGenerator> generator;
     switch (this_source->noise_type_) {
       case NoiseType::WHITE:
-        generator = std::make_unique<WhiteNoiseGenerator>(this_source->seed_, this_source->amplitude_q15_);
+        generator = std::make_unique<WhiteNoiseGenerator>(this_source->amplitude_q15_);
         break;
       case NoiseType::BROWN:
-        generator = std::make_unique<BrownNoiseGenerator>(this_source->seed_, this_source->amplitude_q15_,
-                                                          stream_info.get_sample_rate());
+        generator = std::make_unique<BrownNoiseGenerator>(this_source->amplitude_q15_, stream_info.get_sample_rate());
         break;
       case NoiseType::PINK:
-        generator = std::make_unique<PinkNoiseGenerator>(this_source->seed_, this_source->amplitude_q15_);
+        generator = std::make_unique<PinkNoiseGenerator>(this_source->amplitude_q15_);
         break;
     }
 

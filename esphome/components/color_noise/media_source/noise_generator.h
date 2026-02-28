@@ -19,7 +19,7 @@ enum class NoiseType : uint8_t {
 
 class NoiseGenerator {
  public:
-  NoiseGenerator(uint32_t seed, int32_t amplitude_q15);
+  NoiseGenerator(int32_t amplitude_q15);
   virtual ~NoiseGenerator() = default;
   virtual void generate_samples(int16_t *samples, size_t sample_count) = 0;
 
@@ -46,7 +46,7 @@ class WhiteNoiseGenerator : public NoiseGenerator {
 
 class BrownNoiseGenerator : public NoiseGenerator {
  public:
-  BrownNoiseGenerator(uint32_t seed, int32_t amplitude_q15, uint32_t sample_rate);
+  BrownNoiseGenerator(int32_t amplitude_q15, uint32_t sample_rate);
   void generate_samples(int16_t *samples, size_t sample_count) override;
 
  protected:

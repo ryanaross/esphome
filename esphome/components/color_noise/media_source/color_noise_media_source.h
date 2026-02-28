@@ -28,7 +28,7 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
  public:
   void setup() override;
   void loop() override;
-  // TODO: implement dump_config() to log sample rate and default seed
+  // TODO: implement dump_config() to log sample rate and amplitude
 
   // MediaSource interface implementation
   bool play_uri(const std::string &uri) override;
@@ -37,7 +37,6 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
 
   // Configuration setters
   void set_sample_rate(uint32_t sample_rate) { this->sample_rate_ = sample_rate; }
-  void set_default_seed(uint32_t seed) { this->default_seed_ = seed; }
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
 
  protected:
@@ -51,9 +50,7 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
   size_t total_samples_to_generate_{0};  // 0 = infinite playback, >0 = stop after this many samples
   size_t samples_generated_{0};          // Counter for tracking playback progress
 
-  uint32_t seed_{0};
   uint32_t sample_rate_{16000};
-  uint32_t default_seed_{0};
 
   int32_t amplitude_q15_{29490};
 
