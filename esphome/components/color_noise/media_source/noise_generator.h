@@ -19,13 +19,12 @@ enum class NoiseType : uint8_t {
 
 class NoiseGenerator {
  public:
-  NoiseGenerator(int32_t amplitude_q15);
+  NoiseGenerator();
   virtual ~NoiseGenerator() = default;
-  virtual void generate_samples(int16_t *samples, size_t sample_count) = 0;
+  virtual void generate_samples(int16_t *samples, size_t sample_count, int32_t amplitude_q15) = 0;
 
  protected:
   uint32_t prng_state_;
-  int32_t amplitude_q15_;
 
   /// @brief xorshift32 PRNG for noise generation
   /// @param state PRNG state (will be modified)
@@ -41,13 +40,13 @@ class NoiseGenerator {
 class WhiteNoiseGenerator : public NoiseGenerator {
  public:
   using NoiseGenerator::NoiseGenerator;
-  void generate_samples(int16_t *samples, size_t sample_count) override;
+  void generate_samples(int16_t *samples, size_t sample_count, int32_t amplitude_q15) override;
 };
 
 class BrownNoiseGenerator : public NoiseGenerator {
  public:
-  BrownNoiseGenerator(int32_t amplitude_q15, uint32_t sample_rate);
-  void generate_samples(int16_t *samples, size_t sample_count) override;
+  BrownNoiseGenerator(uint32_t sample_rate);
+  void generate_samples(int16_t *samples, size_t sample_count, int32_t amplitude_q15) override;
 
  protected:
   int32_t y_accumulator_{0};
@@ -58,7 +57,7 @@ class BrownNoiseGenerator : public NoiseGenerator {
 class PinkNoiseGenerator : public NoiseGenerator {
  public:
   using NoiseGenerator::NoiseGenerator;
-  void generate_samples(int16_t *samples, size_t sample_count) override;
+  void generate_samples(int16_t *samples, size_t sample_count, int32_t amplitude_q15) override;
 
  protected:
   std::array<int32_t, 7> buffers_{};

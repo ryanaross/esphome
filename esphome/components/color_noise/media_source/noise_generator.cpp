@@ -10,20 +10,20 @@
 namespace esphome {
 namespace color_noise {
 
-NoiseGenerator::NoiseGenerator(int32_t amplitude_q15) : amplitude_q15_(amplitude_q15) {
+NoiseGenerator::NoiseGenerator() {
   // Seed from ESPHome's RNG; xorshift32 requires non-zero state
   uint32_t seed = random_uint32();
   this->prng_state_ = (seed == 0) ? 1 : seed;
 }
 
-void WhiteNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count) {
+void WhiteNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count, int32_t amplitude_q15) {
   for (size_t i = 0; i < sample_count; i++) {
     int32_t white = static_cast<int16_t>(xorshift32(this->prng_state_) >> 16);  // Q15 white noise sample
-    samples[i] = static_cast<int16_t>((white * this->amplitude_q15_) >> 15);
+    samples[i] = static_cast<int16_t>((white * amplitude_q15) >> 15);
   }
 }
 
-BrownNoiseGenerator::BrownNoiseGenerator(int32_t amplitude_q15, uint32_t sample_rate) : NoiseGenerator(amplitude_q15) {
+BrownNoiseGenerator::BrownNoiseGenerator(uint32_t sample_rate) : NoiseGenerator() {
   // Double precision is unnecessary, but avoids single precision so the calling task isn't locked to its current CPU
   // core on an ESP32
 
@@ -42,7 +42,7 @@ BrownNoiseGenerator::BrownNoiseGenerator(int32_t amplitude_q15, uint32_t sample_
   this->scaling_ = static_cast<int32_t>(std::round(scaling_f * 32768.0));
 }
 
-void BrownNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count) {
+void BrownNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count, int32_t amplitude_q15) {
   for (size_t i = 0; i < sample_count; i++) {
     // Generate white noise
     int32_t white = static_cast<int16_t>(xorshift32(this->prng_state_) >> 16);  // Q15 white noise sample
@@ -61,13 +61,13 @@ void BrownNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count
     }
 
     // Apply amplitude scaling (both operands are Q15-bounded, so result fits int16_t)
-    samples[i] = static_cast<int16_t>((this->y_accumulator_ * this->amplitude_q15_) >> 15);
+    samples[i] = static_cast<int16_t>((this->y_accumulator_ * amplitude_q15) >> 15);
   }
 }
 
-void PinkNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count) {
+void PinkNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count, int32_t amplitude_q15) {
   // scale by normalization factor 0.129f in Q15
-  int32_t amplitude = (this->amplitude_q15_ * 4227) >> 15;
+  int32_t amplitude = (amplitude_q15 * 4227) >> 15;
 
   for (size_t i = 0; i < sample_count; i++) {
     // Generate white noise in Q15 format

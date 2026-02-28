@@ -334,13 +334,13 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     std::unique_ptr<NoiseGenerator> generator;
     switch (this_source->noise_type_) {
       case NoiseType::WHITE:
-        generator = std::make_unique<WhiteNoiseGenerator>(this_source->amplitude_q15_);
+        generator = std::make_unique<WhiteNoiseGenerator>();
         break;
       case NoiseType::BROWN:
-        generator = std::make_unique<BrownNoiseGenerator>(this_source->amplitude_q15_, stream_info.get_sample_rate());
+        generator = std::make_unique<BrownNoiseGenerator>(stream_info.get_sample_rate());
         break;
       case NoiseType::PINK:
-        generator = std::make_unique<PinkNoiseGenerator>(this_source->amplitude_q15_);
+        generator = std::make_unique<PinkNoiseGenerator>();
         break;
     }
 
@@ -385,7 +385,7 @@ void ColorNoiseMediaSource::generate_task(void *params) {
             int16_t *samples = reinterpret_cast<int16_t *>(output_buffer->get_buffer_end());
             size_t sample_count = bytes_to_generate / sizeof(int16_t);
 
-            generator->generate_samples(samples, sample_count);
+            generator->generate_samples(samples, sample_count, this_source->amplitude_q15_);
             output_buffer->increase_buffer_length(bytes_to_generate);
 
             // Track the number of samples generated
