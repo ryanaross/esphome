@@ -7,7 +7,7 @@ from esphome.cpp_generator import MockObjClass
 
 CODEOWNERS = ["@kahrendt"]
 
-DEPENDENCIES = ["audio"]
+AUTO_LOAD = ["audio"]
 
 IS_PLATFORM_COMPONENT = True
 
