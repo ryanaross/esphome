@@ -28,7 +28,7 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
  public:
   void setup() override;
   void loop() override;
-  // TODO: implement dump_config() to log sample rate and amplitude
+  // TODO: implement dump_config() to log sample rate
 
   // MediaSource interface implementation
   bool play_uri(const std::string &uri) override;
@@ -51,8 +51,6 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
   size_t samples_generated_{0};          // Counter for tracking playback progress
 
   uint32_t sample_rate_{16000};
-
-  int32_t amplitude_q15_{29490};
 
   ColorNoiseGenerationState generation_state_{ColorNoiseGenerationState::IDLE};
   NoiseType noise_type_{NoiseType::WHITE};

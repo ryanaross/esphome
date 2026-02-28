@@ -25,6 +25,18 @@ struct AudioSinkAdapter : public audio::AudioSinkCallback {
 static const uint32_t GENERATE_TASK_STACK_SIZE = 3 * 1024;
 static const uint32_t READ_WRITE_TIMEOUT_MS = 20;
 
+static const size_t FADE_DURATION_SECONDS = 5;  // 5 second fade-in and fade-out
+static const size_t FADE_STEPS = 51;            // -50dB to 0dB, 1dB per step (51 levels)
+
+// Q15 multiplier for +1dB: round(10^(1/20) * 32768) = 36766
+static const int32_t FADE_IN_STEP_Q15 = 36766;
+
+// Q15 multiplier for -1dB: round(10^(-1/20) * 32768) = 29205
+static const int32_t FADE_OUT_STEP_Q15 = 29205;
+
+// Q15 value at -50dB: round(10^(-50/20) * 32768) = 104
+static const int32_t FADE_START_AMPLITUDE_Q15 = 104;
+
 static const char *const TAG = "color_noise_media_source";
 
 enum class SourceControls : uint8_t {
@@ -346,6 +358,22 @@ void ColorNoiseMediaSource::generate_task(void *params) {
 
     xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_RUNNING);
 
+    // Fade-in/fade-out state
+    // Fade-in applies for infinite playback or finite playback >= 10 seconds.
+    // Fade-out applies only for finite playback >= 10 seconds.
+    const uint32_t sample_rate = stream_info.get_sample_rate();
+    const size_t fade_samples = FADE_DURATION_SECONDS * sample_rate;
+    const size_t fade_chunk_size = fade_samples / FADE_STEPS;
+
+    const bool do_fade_in =
+        (this_source->total_samples_to_generate_ == 0) || (this_source->total_samples_to_generate_ >= 2 * fade_samples);
+    const bool do_fade_out = (this_source->total_samples_to_generate_ >= 2 * fade_samples);
+    const size_t fade_out_start_sample = do_fade_out ? (this_source->total_samples_to_generate_ - fade_samples) : 0;
+
+    int32_t fade_amplitude_q15 = do_fade_in ? FADE_START_AMPLITUDE_Q15 : INT16_MAX;
+    size_t fade_step = 0;
+    size_t fade_out_step = 0;
+
     // Main generation loop
     while (true) {
       EventBits_t event_bits = xEventGroupGetBits(this_source->event_group_);
@@ -381,11 +409,33 @@ void ColorNoiseMediaSource::generate_task(void *params) {
           }
 
           if (bytes_to_generate > 0) {
+            // Update fade envelope: advance fade-in step when crossing a chunk boundary
+            if (do_fade_in && (fade_step < FADE_STEPS - 1)) {
+              if (this_source->samples_generated_ >= (fade_step + 1) * fade_chunk_size) {
+                fade_amplitude_q15 = (fade_amplitude_q15 * FADE_IN_STEP_Q15) >> 15;
+                fade_step++;
+                if (fade_step >= FADE_STEPS - 1) {
+                  fade_amplitude_q15 = INT16_MAX;  // Clamp to correct any accumulated rounding error
+                }
+              }
+            }
+
+            // Advance fade-out step(s) when in the fade-out region.
+            // Use ceiling division so attenuation starts immediately on entering the fade-out region.
+            if (do_fade_out && (this_source->samples_generated_ >= fade_out_start_sample)) {
+              size_t desired_out_step =
+                  (this_source->samples_generated_ - fade_out_start_sample + fade_chunk_size) / fade_chunk_size;
+              while ((fade_out_step < desired_out_step) && (fade_out_step < FADE_STEPS - 1)) {
+                fade_amplitude_q15 = (fade_amplitude_q15 * FADE_OUT_STEP_Q15) >> 15;
+                fade_out_step++;
+              }
+            }
+
             // Generate noise samples directly into the transfer buffer
             int16_t *samples = reinterpret_cast<int16_t *>(output_buffer->get_buffer_end());
             size_t sample_count = bytes_to_generate / sizeof(int16_t);
 
-            generator->generate_samples(samples, sample_count, this_source->amplitude_q15_);
+            generator->generate_samples(samples, sample_count, fade_amplitude_q15);
             output_buffer->increase_buffer_length(bytes_to_generate);
 
             // Track the number of samples generated
