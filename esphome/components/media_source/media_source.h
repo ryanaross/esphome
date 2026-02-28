@@ -53,7 +53,7 @@ class MediaSourceListener {
  public:
   // Used to send audio to the listener
   virtual size_t on_media_output(MediaSource *source, uint8_t *data, size_t length, TickType_t ticks_to_wait,
-                                 audio::AudioStreamInfo stream_info) = 0;
+                                 const audio::AudioStreamInfo &stream_info) = 0;
   // Used to notify listener of state changes
   virtual void on_media_state_changed(MediaSource *source, MediaSourceState state) = 0;
   // Callbacks from smart sources requesting the orchestrator to change volume, mute, or start a new URI.

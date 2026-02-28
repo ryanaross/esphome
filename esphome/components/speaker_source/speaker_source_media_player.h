@@ -101,7 +101,7 @@ class SpeakerSourceMediaPlayer : public Component,
 
   // MediaSourceListener implementations (no pipeline params - uses find_pipeline_for_source_)
   size_t on_media_output(media_source::MediaSource *source, uint8_t *data, size_t length, TickType_t ticks,
-                         audio::AudioStreamInfo stream_info) override;
+                         const audio::AudioStreamInfo &stream_info) override;
   void on_media_state_changed(media_source::MediaSource *source, media_source::MediaSourceState state) override;
   void on_volume_request(media_source::MediaSource *source, float volume) override;
   void on_mute_request(media_source::MediaSource *source, bool is_muted) override;

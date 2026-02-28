@@ -160,7 +160,7 @@ void SpeakerSourceMediaPlayer::on_media_state_changed(media_source::MediaSource 
 }
 
 size_t SpeakerSourceMediaPlayer::on_media_output(media_source::MediaSource *source, uint8_t *data, size_t length,
-                                                 TickType_t ticks, audio::AudioStreamInfo stream_info) {
+                                                 TickType_t ticks, const audio::AudioStreamInfo &stream_info) {
   uint8_t pipeline = this->find_pipeline_for_source_(source);
   PipelineState &ps = this->pipelines_[pipeline];
 
