@@ -5,6 +5,7 @@
 #include "esphome/components/audio/audio_transfer_buffer.h"
 
 #include <cstdlib>
+#include <memory>
 
 namespace esphome {
 namespace color_noise {
@@ -309,92 +310,6 @@ void ColorNoiseMediaSource::handle_command(media_source::MediaSourceCommand comm
   }
 }
 
-void ColorNoiseMediaSource::generate_white_noise_samples(int16_t *samples, size_t sample_count, uint32_t &prng_state,
-                                                         int32_t amplitude) {
-  for (size_t i = 0; i < sample_count; i++) {
-    uint32_t random = xorshift32(prng_state);
-    samples[i] = static_cast<int16_t>((static_cast<int32_t>(random) * amplitude) >> 15);
-  }
-}
-
-void ColorNoiseMediaSource::generate_brown_noise_samples(int16_t *samples, size_t sample_count, uint32_t &prng_state,
-                                                         int32_t &y_accumulator, int32_t leakage, int32_t scaling,
-                                                         int32_t amplitude) {
-  for (size_t i = 0; i < sample_count; i++) {
-    // Generate white noise
-    int32_t white = static_cast<int16_t>(xorshift32(prng_state) >> 16);
-
-    // z = leakage * y + white * scaling (all Q15)
-    int32_t z = ((leakage * y_accumulator) >> 15) + ((white * scaling) >> 15);
-
-    // Check if |z| > 1.0 (in Q15, that's > 32767)
-    int32_t abs_z = (z < 0) ? -z : z;
-
-    if (abs_z > 32767) {
-      // Reflection: reverse direction to prevent clipping
-      y_accumulator = ((leakage * y_accumulator) >> 15) - ((white * scaling) >> 15);
-    } else {
-      y_accumulator = z;
-    }
-
-    // Apply amplitude and clamp
-    int32_t result = (y_accumulator * amplitude) >> 15;
-    samples[i] =
-        static_cast<int16_t>(std::clamp(result, static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX)));
-  }
-}
-
-void ColorNoiseMediaSource::initialize_brown_coefficients(uint32_t sample_rate, int32_t &leakage, int32_t &scaling) {
-  // Double precision is unnecessary, but avoids single precision so the calling task isn't locked to its current CPU
-  // core on an ESP32
-
-  // Calculate leakage coefficient (high-pass filter to prevent DC drift)
-  double leakage_f = (sample_rate - 144.0) / sample_rate;
-  if (leakage_f >= 0.9999) {
-    leakage_f = 0.9999;
-  }
-  leakage = static_cast<int32_t>(std::round(leakage_f * 32768.0));
-
-  // Calculate scaling coefficient (compensates for sample rate)
-  double scaling_f = 9.0 / sqrt(static_cast<double>(sample_rate));
-  if (scaling_f <= 0.01) {
-    scaling_f = 0.01;
-  }
-  scaling = static_cast<int32_t>(std::round(scaling_f * 32768.0));
-}
-
-void ColorNoiseMediaSource::generate_pink_noise_samples(int16_t *samples, size_t sample_count, uint32_t &prng_state,
-                                                        std::array<int32_t, 7> &buffers, int32_t amplitude) {
-  // scale by normalization factor 0.129f in Q15
-  amplitude = (amplitude * 4227) >> 15;
-
-  for (size_t i = 0; i < sample_count; i++) {
-    // Generate white noise in Q15 format
-    int32_t white = static_cast<int16_t>(xorshift32(prng_state) >> 16);
-
-    // Update Paul Kellett's 6 filters (all in Q15)
-    buffers[0] = ((buffers[0] * 32730) >> 15) + ((white * 1820) >> 15);
-    buffers[1] = ((buffers[1] * 32552) >> 15) + ((white * 2460) >> 15);
-    buffers[2] = ((buffers[2] * 31752) >> 15) + ((white * 5038) >> 15);
-    buffers[3] = ((buffers[3] * 28393) >> 15) + ((white * 10175) >> 15);
-    buffers[4] = ((buffers[4] * 18022) >> 15) + ((white * 17464) >> 15);
-    buffers[5] = ((buffers[5] * -24961) >> 15) + ((white * -553) >> 15);
-
-    // Sum all filter outputs + differentiator + scaled white
-    int32_t pink = buffers[0] + buffers[1] + buffers[2] + buffers[3] + buffers[4] + buffers[5] + buffers[6] +
-                   ((white * 17569) >> 15);
-
-    // Update differentiator for next iteration
-    buffers[6] = (white * 3798) >> 15;
-
-    // Apply amplitude and clamp
-    int32_t result = (pink * amplitude) >> 15;
-    // Clamp to int16_t range
-    samples[i] =
-        static_cast<int16_t>(std::clamp(result, static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX)));
-  }
-}
-
 void ColorNoiseMediaSource::generate_task(void *params) {
   ColorNoiseMediaSource *this_source = static_cast<ColorNoiseMediaSource *>(params);
 
@@ -434,22 +349,19 @@ void ColorNoiseMediaSource::generate_task(void *params) {
     audio_sink.stream_info = stream_info;
     output_buffer->set_sink(&audio_sink);
 
-    // Initialize PRNG state with seed
-    uint32_t prng_state = this_source->seed_;
-    if (prng_state == 0) {
-      // Ensure we don't have a zero state (xorshift32 doesn't work with zero)
-      prng_state = 0xDEADBEEF;
-    }
-
-    // Initialize noise-specific state
-    if (this_source->noise_type_ == NoiseType::BROWN) {
-      this_source->brown_y_accumulator_ = 0;
-      initialize_brown_coefficients(stream_info.get_sample_rate(), this_source->brown_leakage_,
-                                    this_source->brown_scaling_);
-    } else if (this_source->noise_type_ == NoiseType::PINK) {
-      for (size_t i = 0; i < 7; i++) {
-        this_source->pink_buffers_[i] = 0;
-      }
+    // Construct the appropriate noise generator (allocated at task start, destroyed at task end)
+    std::unique_ptr<NoiseGenerator> generator;
+    switch (this_source->noise_type_) {
+      case NoiseType::WHITE:
+        generator = std::make_unique<WhiteNoiseGenerator>(this_source->seed_, this_source->amplitude_q15_);
+        break;
+      case NoiseType::BROWN:
+        generator = std::make_unique<BrownNoiseGenerator>(this_source->seed_, this_source->amplitude_q15_,
+                                                          stream_info.get_sample_rate());
+        break;
+      case NoiseType::PINK:
+        generator = std::make_unique<PinkNoiseGenerator>(this_source->seed_, this_source->amplitude_q15_);
+        break;
     }
 
     xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_RUNNING);
@@ -489,24 +401,11 @@ void ColorNoiseMediaSource::generate_task(void *params) {
           }
 
           if (bytes_to_generate > 0) {
-            // Generate noise samples directly into the transfer buffer based on noise type
+            // Generate noise samples directly into the transfer buffer
             int16_t *samples = reinterpret_cast<int16_t *>(output_buffer->get_buffer_end());
             size_t sample_count = bytes_to_generate / sizeof(int16_t);
 
-            switch (this_source->noise_type_) {
-              case NoiseType::WHITE:
-                generate_white_noise_samples(samples, sample_count, prng_state, this_source->amplitude_q15_);
-                break;
-              case NoiseType::BROWN:
-                generate_brown_noise_samples(samples, sample_count, prng_state, this_source->brown_y_accumulator_,
-                                             this_source->brown_leakage_, this_source->brown_scaling_,
-                                             this_source->amplitude_q15_);
-                break;
-              case NoiseType::PINK:
-                generate_pink_noise_samples(samples, sample_count, prng_state, this_source->pink_buffers_,
-                                            this_source->amplitude_q15_);
-                break;
-            }
+            generator->generate_samples(samples, sample_count);
             output_buffer->increase_buffer_length(bytes_to_generate);
 
             // Track the number of samples generated

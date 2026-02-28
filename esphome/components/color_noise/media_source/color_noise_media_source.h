@@ -4,6 +4,8 @@
 
 #ifdef USE_ESP32
 
+#include "noise_generator.h"
+
 #include "esphome/components/audio/audio.h"
 #include "esphome/components/media_source/media_source.h"
 #include "esphome/core/component.h"
@@ -16,20 +18,11 @@
 namespace esphome {
 namespace color_noise {
 
-enum class NoiseType : uint8_t {
-  WHITE,
-  BROWN,
-  PINK,
-};
-
 enum class ColorNoiseGenerationState : uint8_t {
   START_TASK,
   GENERATING,
   IDLE,
 };
-
-// Forward declaration
-class ColorNoiseMediaSource;
 
 class ColorNoiseMediaSource : public Component, public media_source::MediaSource {
  public:
@@ -48,15 +41,8 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
 
  protected:
-  uint32_t sample_rate_{16000};
-  uint32_t default_seed_{0};
-  bool task_stack_in_psram_{false};
+  static void generate_task(void *params);
 
-  // Pipeline state
-  uint32_t seed_{0};
-  NoiseType noise_type_{NoiseType::WHITE};
-  bool paused_{false};
-  ColorNoiseGenerationState generation_state_{ColorNoiseGenerationState::IDLE};
   EventGroupHandle_t event_group_{nullptr};
   QueueHandle_t controls_queue_{nullptr};
   TaskHandle_t generate_task_handle_{nullptr};
@@ -64,39 +50,17 @@ class ColorNoiseMediaSource : public Component, public media_source::MediaSource
   StackType_t *generate_task_stack_buffer_{nullptr};
   size_t total_samples_to_generate_{0};  // 0 = infinite playback, >0 = stop after this many samples
   size_t samples_generated_{0};          // Counter for tracking playback progress
-  // Brown noise state
-  int32_t brown_y_accumulator_{0};
-  int32_t brown_leakage_{0};
-  int32_t brown_scaling_{0};
-  // Pink noise state (Voss-McCartney algorithm with 5 octave generators)
-  std::array<int32_t, 7> pink_buffers_{};
+
+  uint32_t seed_{0};
+  uint32_t sample_rate_{16000};
+  uint32_t default_seed_{0};
+
   int32_t amplitude_q15_{29490};
 
-  static void generate_task(void *params);
-
-  /// @brief xorshift32 PRNG for noise generation
-  /// @param state PRNG state (will be modified)
-  /// @return Random 32-bit value
-  static inline uint32_t xorshift32(uint32_t &state) {
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    return state;
-  }
-
-  /// @brief Generate white noise samples using xorshift32 PRNG
-  static void generate_white_noise_samples(int16_t *samples, size_t sample_count, uint32_t &prng_state,
-                                           int32_t amplitude);
-
-  /// @brief Generate brown noise samples (random walk / integrated white noise)
-  static void generate_brown_noise_samples(int16_t *samples, size_t sample_count, uint32_t &prng_state,
-                                           int32_t &y_accumulator, int32_t leakage, int32_t scaling, int32_t amplitude);
-
-  static void initialize_brown_coefficients(uint32_t sample_rate, int32_t &leakage, int32_t &scaling);
-
-  /// @brief Generate pink noise samples using Voss-McCartney algorithm
-  static void generate_pink_noise_samples(int16_t *samples, size_t sample_count, uint32_t &prng_state,
-                                          std::array<int32_t, 7> &buffers, int32_t amplitude);
+  ColorNoiseGenerationState generation_state_{ColorNoiseGenerationState::IDLE};
+  NoiseType noise_type_{NoiseType::WHITE};
+  bool paused_{false};
+  bool task_stack_in_psram_{false};
 };
 
 }  // namespace color_noise
