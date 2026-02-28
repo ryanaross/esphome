@@ -60,10 +60,8 @@ void BrownNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count
       this->y_accumulator_ = z;
     }
 
-    // Apply amplitude and clamp
-    int32_t result = (this->y_accumulator_ * this->amplitude_q15_) >> 15;
-    samples[i] =
-        static_cast<int16_t>(std::clamp(result, static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX)));
+    // Apply amplitude scaling (both operands are Q15-bounded, so result fits int16_t)
+    samples[i] = static_cast<int16_t>((this->y_accumulator_ * this->amplitude_q15_) >> 15);
   }
 }
 
@@ -90,10 +88,11 @@ void PinkNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count)
     // Update differentiator for next iteration
     this->buffers_[6] = (white * 3798) >> 15;
 
-    // Apply amplitude and clamp
-    int32_t result = (pink * amplitude) >> 15;
-    samples[i] =
-        static_cast<int16_t>(std::clamp(result, static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX)));
+    // Clamp to Q15 range before scaling to prevent overflow in the multiplication
+    pink = std::clamp(pink, static_cast<int32_t>(INT16_MIN), static_cast<int32_t>(INT16_MAX));
+
+    // Apply amplitude scaling
+    samples[i] = static_cast<int16_t>((pink * amplitude) >> 15);
   }
 }
 
