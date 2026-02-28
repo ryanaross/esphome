@@ -7,6 +7,8 @@ from esphome.cpp_generator import MockObjClass
 
 CODEOWNERS = ["@kahrendt"]
 
+DEPENDENCIES = ["audio"]
+
 IS_PLATFORM_COMPONENT = True
 
 media_source_ns = cg.esphome_ns.namespace("media_source")
