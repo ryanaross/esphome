@@ -311,12 +311,6 @@ void ColorNoiseMediaSource::handle_command(media_source::MediaSourceCommand comm
   }
 }
 
-media_source::MediaSourceCapabilities ColorNoiseMediaSource::get_capabilities() {
-  media_source::MediaSourceCapabilities caps;
-  caps.supports_pause = true;  // Noise generation can be paused
-  return caps;
-}
-
 void ColorNoiseMediaSource::generate_white_noise_samples(int16_t *samples, size_t sample_count, uint32_t &prng_state,
                                                          int32_t amplitude) {
   for (size_t i = 0; i < sample_count; i++) {

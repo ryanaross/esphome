@@ -25,7 +25,6 @@ enum class MediaSourceState : uint8_t {
 
 /// @brief Commands that can be sent to a media source
 enum class MediaSourceCommand : uint8_t {
-  MEDIA_SOURCE_COMMAND_END = 0,  // Indicates source should end
   MEDIA_SOURCE_COMMAND_PLAY,
   MEDIA_SOURCE_COMMAND_PAUSE,
   MEDIA_SOURCE_COMMAND_TOGGLE,  // Toggle play/pause (media player converts to PLAY or PAUSE)
@@ -41,16 +40,6 @@ enum class MediaSourceCommand : uint8_t {
   MEDIA_SOURCE_COMMAND_GROUP_JOIN,      // Join another group
 };
 
-/// @brief Capabilities that a media source can advertise
-struct MediaSourceCapabilities {
-  bool supports_pause{false};           // Can pause/resume playback
-  bool supports_next_track{false};      // Can skip to next track
-  bool supports_previous_track{false};  // Can skip to previous track
-  bool supports_volume_control{false};  // Source needs volume notifications
-  bool has_internal_playlist{false};    // Source manages its own playlist
-  bool supports_group_join{false};      // Can join a group
-};
-
 // Forward declaration
 class MediaSource;
 
@@ -63,7 +52,6 @@ class MediaSourceListener {
   virtual size_t on_media_output(MediaSource *source, uint8_t *data, size_t length, TickType_t ticks_to_wait,
                                  audio::AudioStreamInfo stream_info) = 0;
   virtual void on_media_state_changed(MediaSource *source, MediaSourceState state) = 0;
-  virtual void on_capabilities_changed(MediaSource *source, MediaSourceCapabilities capabilities) = 0;
   virtual void on_volume_request(MediaSource *source, float volume) = 0;
   virtual void on_mute_request(MediaSource *source, bool is_muted) = 0;
   virtual void on_play_uri_request(MediaSource *source, const std::string &uri) = 0;
@@ -90,10 +78,10 @@ class MediaSource {
   /// @param command The command to execute
   virtual void handle_command(MediaSourceCommand command) = 0;
 
-  /// @brief Get current capabilities
-  /// Can change dynamically (e.g., pause becomes available after playback starts)
-  /// @return Current capabilities of this source
-  virtual MediaSourceCapabilities get_capabilities() = 0;
+  /// @brief Whether this source manages its own playlist internally
+  /// Override to return true for smart sources (e.g., Sendspin) that handle
+  /// next/previous/repeat/shuffle themselves.
+  virtual bool has_internal_playlist() const { return false; }
 
   // === State Access ===
 

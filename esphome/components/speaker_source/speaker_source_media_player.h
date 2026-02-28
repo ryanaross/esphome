@@ -103,8 +103,6 @@ class SpeakerSourceMediaPlayer : public Component,
   size_t on_media_output(media_source::MediaSource *source, uint8_t *data, size_t length, TickType_t ticks,
                          audio::AudioStreamInfo stream_info) override;
   void on_media_state_changed(media_source::MediaSource *source, media_source::MediaSourceState state) override;
-  void on_capabilities_changed(media_source::MediaSource *source,
-                               media_source::MediaSourceCapabilities capabilities) override;
   void on_volume_request(media_source::MediaSource *source, float volume) override;
   void on_mute_request(media_source::MediaSource *source, bool is_muted) override;
   void on_play_uri_request(media_source::MediaSource *source, const std::string &uri) override;

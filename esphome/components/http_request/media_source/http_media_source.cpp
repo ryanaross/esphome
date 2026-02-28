@@ -357,12 +357,6 @@ void HTTPMediaSource::handle_command(media_source::MediaSourceCommand command) {
   }
 }
 
-media_source::MediaSourceCapabilities HTTPMediaSource::get_capabilities() {
-  media_source::MediaSourceCapabilities caps;
-  caps.supports_pause = true;  // HTTP streaming can be paused
-  return caps;
-}
-
 void HTTPMediaSource::read_task(void *params) {
   HTTPMediaSource *this_source = static_cast<HTTPMediaSource *>(params);
 

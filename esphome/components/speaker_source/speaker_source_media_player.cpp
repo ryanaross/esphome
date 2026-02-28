@@ -115,11 +115,6 @@ void SpeakerSourceMediaPlayer::on_play_uri_request(media_source::MediaSource *so
   call.perform();
 }
 
-void SpeakerSourceMediaPlayer::on_capabilities_changed(media_source::MediaSource *source,
-                                                       media_source::MediaSourceCapabilities capabilities) {
-  // Currently unused - capabilities are queried on demand
-}
-
 void SpeakerSourceMediaPlayer::on_media_state_changed(media_source::MediaSource *source,
                                                       media_source::MediaSourceState state) {
   // Find which pipeline this source belongs to
@@ -415,7 +410,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
   media_source::MediaSource *active_source = ps.active_source;
 
   // Check if active source has internal playlist management
-  bool has_internal_playlist = (active_source != nullptr) && active_source->get_capabilities().has_internal_playlist;
+  bool has_internal_playlist = (active_source != nullptr) && active_source->has_internal_playlist();
 
   switch (control_command.type) {
     case MediaPlayerControlCommand::PLAY_URI: {
@@ -499,8 +494,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
               target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PAUSE);
             }
           } else if (!has_internal_playlist && active_source == nullptr && !ps.playlist.empty()) {
-            bool last_has_internal_playlist =
-                (ps.last_source != nullptr) && ps.last_source->get_capabilities().has_internal_playlist;
+            bool last_has_internal_playlist = (ps.last_source != nullptr) && ps.last_source->has_internal_playlist();
             if (last_has_internal_playlist) {
               ps.last_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY);
             } else {
@@ -519,8 +513,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
 
         case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY: {
           if (!has_internal_playlist && active_source == nullptr && !ps.playlist.empty()) {
-            bool last_has_internal_playlist =
-                (ps.last_source != nullptr) && ps.last_source->get_capabilities().has_internal_playlist;
+            bool last_has_internal_playlist = (ps.last_source != nullptr) && ps.last_source->has_internal_playlist();
             if (last_has_internal_playlist) {
               ps.last_source->handle_command(source_command);
             } else {
@@ -637,16 +630,6 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
             target_source->handle_command(source_command);
           }
           break;
-
-        case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_GROUP_JOIN: {
-          bool active_can_join = (active_source != nullptr) && active_source->get_capabilities().supports_group_join;
-          bool last_can_join = (ps.last_source != nullptr) && ps.last_source->get_capabilities().supports_group_join;
-
-          if ((active_can_join || last_can_join) && target_source != nullptr) {
-            target_source->handle_command(source_command);
-          }
-          break;
-        }
 
         default:
           // All other commands (PAUSE, etc.) forward directly
@@ -810,11 +793,9 @@ void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state) {
 
   this->save_volume_restore_state_();
 
-  // Notify media sources that support volume control about the mute state change
+  // Notify all media sources about the mute state change
   for (auto *media_source : this->media_sources_) {
-    if (media_source->get_capabilities().supports_volume_control) {
-      media_source->notify_mute_changed(mute_state);
-    }
+    media_source->notify_mute_changed(mute_state);
   }
 
   if (old_mute_state != mute_state) {
@@ -841,11 +822,9 @@ void SpeakerSourceMediaPlayer::set_volume_(float volume, bool publish) {
     this->save_volume_restore_state_();
   }
 
-  // Notify media sources that support volume control about the volume change
+  // Notify all media sources about the volume change
   for (auto *media_source : this->media_sources_) {
-    if (media_source->get_capabilities().supports_volume_control) {
-      media_source->notify_volume_changed(volume);
-    }
+    media_source->notify_volume_changed(volume);
   }
 
   // Turn on the mute state if the volume is effectively zero, off otherwise

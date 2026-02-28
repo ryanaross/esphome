@@ -39,7 +39,6 @@ class HTTPMediaSource : public Component, public media_source::MediaSource, publ
   // MediaSource interface implementation
   bool play_uri(const std::string &uri) override;
   void handle_command(media_source::MediaSourceCommand command) override;
-  media_source::MediaSourceCapabilities get_capabilities() override;
   bool can_handle(const std::string &uri) const override {
     return uri.starts_with("http://") || uri.starts_with("https://");
   }

@@ -239,12 +239,6 @@ void AudioFileMediaSource::handle_command(media_source::MediaSourceCommand comma
   }
 }
 
-media_source::MediaSourceCapabilities AudioFileMediaSource::get_capabilities() {
-  media_source::MediaSourceCapabilities caps;
-  caps.supports_pause = true;  // File playback can be paused
-  return caps;
-}
-
 void AudioFileMediaSource::decode_task(void *params) {
   AudioFileMediaSource *this_source = static_cast<AudioFileMediaSource *>(params);
 
