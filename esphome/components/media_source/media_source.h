@@ -26,22 +26,22 @@ enum class MediaSourceState : uint8_t {
 /// @brief Commands that can be sent to a media source
 enum class MediaSourceCommand : uint8_t {
   // All sources should support these basic commands
-  MEDIA_SOURCE_COMMAND_PLAY,
-  MEDIA_SOURCE_COMMAND_PAUSE,
-  MEDIA_SOURCE_COMMAND_STOP,
+  PLAY,
+  PAUSE,
+  STOP,
 
   // Only sources with internal playlists will handle these; simple sources should ignore them.
-  MEDIA_SOURCE_COMMAND_NEXT,
-  MEDIA_SOURCE_COMMAND_PREVIOUS,
-  MEDIA_SOURCE_COMMAND_CLEAR_PLAYLIST,
-  MEDIA_SOURCE_COMMAND_REPEAT_ALL,
-  MEDIA_SOURCE_COMMAND_REPEAT_ONE,
-  MEDIA_SOURCE_COMMAND_REPEAT_OFF,
-  MEDIA_SOURCE_COMMAND_SHUFFLE,
-  MEDIA_SOURCE_COMMAND_UNSHUFFLE,
+  NEXT,
+  PREVIOUS,
+  CLEAR_PLAYLIST,
+  REPEAT_ALL,
+  REPEAT_ONE,
+  REPEAT_OFF,
+  SHUFFLE,
+  UNSHUFFLE,
 
   // Command to join a group for synchronized playback; simple source should ignore this.
-  MEDIA_SOURCE_COMMAND_GROUP_JOIN,
+  GROUP_JOIN,
 };
 
 // Forward declaration

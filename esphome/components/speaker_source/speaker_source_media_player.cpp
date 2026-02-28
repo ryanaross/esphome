@@ -327,7 +327,7 @@ bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, uin
       // Only send END command once per source - check if we've already asked this source to stop
       if (ps.stopping_source != active_source) {
         ESP_LOGD(TAG, "Pipeline %zu: Stopping active source before playing: %s", pipeline, uri.c_str());
-        active_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP);
+        active_source->handle_command(media_source::MediaSourceCommand::STOP);
         if (ps.is_configured()) {
           ps.speaker->stop();
         }
@@ -344,7 +344,7 @@ bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, uin
     if (ps.stopping_source != target_source) {
       ESP_LOGD(TAG, "Pipeline %zu: Target source busy (state=%d), stopping before playing: %s", pipeline,
                static_cast<int>(target_state), uri.c_str());
-      target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP);
+      target_source->handle_command(media_source::MediaSourceCommand::STOP);
       if (ps.is_configured()) {
         ps.speaker->stop();
       }
@@ -491,12 +491,12 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
           // Convert TOGGLE to PLAY or PAUSE based on current state
           if ((active_source != nullptr) && (active_source->get_state() == media_source::MediaSourceState::PLAYING)) {
             if (target_source != nullptr) {
-              target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PAUSE);
+              target_source->handle_command(media_source::MediaSourceCommand::PAUSE);
             }
           } else if (!has_internal_playlist && active_source == nullptr && !ps.playlist.empty()) {
             bool last_has_internal_playlist = (ps.last_source != nullptr) && ps.last_source->has_internal_playlist();
             if (last_has_internal_playlist) {
-              ps.last_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY);
+              ps.last_source->handle_command(media_source::MediaSourceCommand::PLAY);
             } else {
               if (ps.playlist_index >= ps.playlist.size()) {
                 ps.playlist_index = 0;
@@ -505,7 +505,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
             }
           } else {
             if (target_source != nullptr) {
-              target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY);
+              target_source->handle_command(media_source::MediaSourceCommand::PLAY);
             }
           }
           break;
@@ -515,7 +515,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
           if (!has_internal_playlist && active_source == nullptr && !ps.playlist.empty()) {
             bool last_has_internal_playlist = (ps.last_source != nullptr) && ps.last_source->has_internal_playlist();
             if (last_has_internal_playlist) {
-              ps.last_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY);
+              ps.last_source->handle_command(media_source::MediaSourceCommand::PLAY);
             } else {
               if (ps.playlist_index >= ps.playlist.size()) {
                 ps.playlist_index = 0;
@@ -523,14 +523,14 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
               this->queue_command_(MediaPlayerControlCommand::PLAY_CURRENT, pipeline);
             }
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY);
+            target_source->handle_command(media_source::MediaSourceCommand::PLAY);
           }
           break;
         }
 
         case media_player::MEDIA_PLAYER_COMMAND_PAUSE: {
           if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PAUSE);
+            target_source->handle_command(media_source::MediaSourceCommand::PAUSE);
           }
           break;
         }
@@ -543,7 +543,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
             ps.playlist_index = 0;
           }
           if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP);
+            target_source->handle_command(media_source::MediaSourceCommand::STOP);
           }
           break;
         }
@@ -558,7 +558,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
               this->queue_command_(MediaPlayerControlCommand::PLAY_CURRENT, pipeline);
             }
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_NEXT);
+            target_source->handle_command(media_source::MediaSourceCommand::NEXT);
           }
           break;
         }
@@ -573,7 +573,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
               this->queue_command_(MediaPlayerControlCommand::PLAY_CURRENT, pipeline);
             }
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PREVIOUS);
+            target_source->handle_command(media_source::MediaSourceCommand::PREVIOUS);
           }
           break;
         }
@@ -582,7 +582,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
           if (!has_internal_playlist) {
             ps.repeat_mode = REPEAT_ONE;
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_REPEAT_ONE);
+            target_source->handle_command(media_source::MediaSourceCommand::REPEAT_ONE);
           }
           break;
 
@@ -590,7 +590,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
           if (!has_internal_playlist) {
             ps.repeat_mode = REPEAT_OFF;
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_REPEAT_OFF);
+            target_source->handle_command(media_source::MediaSourceCommand::REPEAT_OFF);
           }
           break;
 
@@ -598,7 +598,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
           if (!has_internal_playlist) {
             ps.repeat_mode = REPEAT_ALL;
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_REPEAT_ALL);
+            target_source->handle_command(media_source::MediaSourceCommand::REPEAT_ALL);
           }
           break;
 
@@ -617,7 +617,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
             }
             ps.shuffle_indices.clear();
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_CLEAR_PLAYLIST);
+            target_source->handle_command(media_source::MediaSourceCommand::CLEAR_PLAYLIST);
           }
           break;
         }
@@ -626,7 +626,7 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
           if (!has_internal_playlist) {
             this->shuffle_playlist_(pipeline);
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_SHUFFLE);
+            target_source->handle_command(media_source::MediaSourceCommand::SHUFFLE);
           }
           break;
 
@@ -634,13 +634,13 @@ void SpeakerSourceMediaPlayer::process_control_queue_() {
           if (!has_internal_playlist) {
             this->unshuffle_playlist_(pipeline);
           } else if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_UNSHUFFLE);
+            target_source->handle_command(media_source::MediaSourceCommand::UNSHUFFLE);
           }
           break;
 
         case media_player::MEDIA_PLAYER_COMMAND_GROUP_JOIN:
           if (target_source != nullptr) {
-            target_source->handle_command(media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_GROUP_JOIN);
+            target_source->handle_command(media_source::MediaSourceCommand::GROUP_JOIN);
           }
           break;
 

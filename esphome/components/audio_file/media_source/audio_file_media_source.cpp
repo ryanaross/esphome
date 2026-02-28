@@ -215,19 +215,19 @@ void AudioFileMediaSource::handle_command(media_source::MediaSourceCommand comma
 
   ControlMessage message;
   switch (command) {
-    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_STOP: {
+    case media_source::MediaSourceCommand::STOP: {
       if (this->decoding_state_ == AudioFileDecodingState::DECODING) {
         message.control = SourceControls::STOP;
         xQueueSend(this->controls_queue_, &message, 0);
       }
       break;
     }
-    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PAUSE: {
+    case media_source::MediaSourceCommand::PAUSE: {
       message.control = SourceControls::PAUSE;
       xQueueSend(this->controls_queue_, &message, 0);
       break;
     }
-    case media_source::MediaSourceCommand::MEDIA_SOURCE_COMMAND_PLAY: {
+    case media_source::MediaSourceCommand::PLAY: {
       message.control = SourceControls::RESUME;
       xQueueSend(this->controls_queue_, &message, 0);
       break;
