@@ -18,8 +18,8 @@ NoiseGenerator::NoiseGenerator(int32_t amplitude_q15) : amplitude_q15_(amplitude
 
 void WhiteNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count) {
   for (size_t i = 0; i < sample_count; i++) {
-    uint32_t random = xorshift32(this->prng_state_);
-    samples[i] = static_cast<int16_t>((static_cast<int32_t>(random) * this->amplitude_q15_) >> 15);
+    int32_t white = static_cast<int16_t>(xorshift32(this->prng_state_) >> 16);  // Q15 white noise sample
+    samples[i] = static_cast<int16_t>((white * this->amplitude_q15_) >> 15);
   }
 }
 
@@ -45,7 +45,7 @@ BrownNoiseGenerator::BrownNoiseGenerator(int32_t amplitude_q15, uint32_t sample_
 void BrownNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count) {
   for (size_t i = 0; i < sample_count; i++) {
     // Generate white noise
-    int32_t white = static_cast<int16_t>(xorshift32(this->prng_state_) >> 16);
+    int32_t white = static_cast<int16_t>(xorshift32(this->prng_state_) >> 16);  // Q15 white noise sample
 
     // z = leakage * y + white * scaling (all Q15)
     int32_t z = ((this->leakage_ * this->y_accumulator_) >> 15) + ((white * this->scaling_) >> 15);
@@ -73,7 +73,7 @@ void PinkNoiseGenerator::generate_samples(int16_t *samples, size_t sample_count)
 
   for (size_t i = 0; i < sample_count; i++) {
     // Generate white noise in Q15 format
-    int32_t white = static_cast<int16_t>(xorshift32(this->prng_state_) >> 16);
+    int32_t white = static_cast<int16_t>(xorshift32(this->prng_state_) >> 16);  // Q15 white noise sample
 
     // Update Paul Kellett's 6 filters (all in Q15)
     this->buffers_[0] = ((this->buffers_[0] * 32730) >> 15) + ((white * 1820) >> 15);
