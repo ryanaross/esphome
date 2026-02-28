@@ -15,7 +15,6 @@ using TickType_t = uint32_t;
 namespace esphome {
 namespace media_source {
 
-/// @brief Represents the current state of a media source
 enum class MediaSourceState : uint8_t {
   IDLE = 0,     // Not playing, ready to accept play_uri
   PLAYING = 1,  // Currently playing media
@@ -23,7 +22,7 @@ enum class MediaSourceState : uint8_t {
   ERROR = 4,    // Error occurred during playback
 };
 
-/// @brief Commands that can be sent to a media source
+/// @brief Commands that can be sent from the orchestrator to a media source
 enum class MediaSourceCommand : uint8_t {
   // All sources should support these basic commands
   PLAY,
@@ -48,7 +47,7 @@ enum class MediaSourceCommand : uint8_t {
 class MediaSource;
 
 /// @brief Interface for receiving callbacks from a MediaSource.
-/// The MediaSource pointer is passed as the first argument so the listener can identify
+/// The MediaSource pointer is passed as the first argument so the listener/orchestrator can identify
 /// which source is calling.
 class MediaSourceListener {
  public:
