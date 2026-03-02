@@ -150,12 +150,21 @@ class SpeakerSourceMediaPlayer : public Component,
   /// @brief Updates this->volume and saves volume/mute state to flash for restoration if publish is true.
   void set_volume_(float volume, bool publish = true);
 
-  /// @brief Sets the mute state. Always saves volume/mute state to flash for restoration.
+  /// @brief Sets the mute state.
   /// @param mute_state If true, audio will be muted. If false, audio will be unmuted
-  void set_mute_state_(bool mute_state);
+  /// @param publish If true, saves volume/mute state to flash for restoration
+  void set_mute_state_(bool mute_state, bool publish = true);
 
   /// @brief Saves the current volume and mute state to the flash for restoration.
   void save_volume_restore_state_();
+
+  /// @brief Determine media player state from the media pipeline's active source
+  /// @param media_source Active source for the media pipeline (may be nullptr)
+  /// @param has_next_item Whether the media pipeline has more items queued
+  /// @param old_state Previous media player state (used for transition smoothing)
+  /// @return The appropriate MediaPlayerState
+  media_player::MediaPlayerState get_media_pipeline_state_(media_source::MediaSource *media_source, bool has_next_item,
+                                                           media_player::MediaPlayerState old_state) const;
 
   void process_control_queue_();
   bool try_execute_play_uri_(const std::string &uri, uint8_t pipeline);

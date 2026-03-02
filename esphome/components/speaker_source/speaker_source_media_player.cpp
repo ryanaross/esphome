@@ -70,6 +70,7 @@ uint8_t SpeakerSourceMediaPlayer::find_pipeline_for_source_(media_source::MediaS
       return i;
     }
   }
+  ESP_LOGW(TAG, "Source %p not found in any pipeline, defaulting to media pipeline", source);
   return MEDIA_PIPELINE;  // fallback
 }
 
@@ -191,6 +192,30 @@ size_t SpeakerSourceMediaPlayer::on_media_output(media_source::MediaSource *sour
   return 0;
 }
 
+media_player::MediaPlayerState SpeakerSourceMediaPlayer::get_media_pipeline_state_(
+    media_source::MediaSource *source, bool has_next_item, media_player::MediaPlayerState old_state) const {
+  if (source != nullptr) {
+    switch (source->get_state()) {
+      case media_source::MediaSourceState::PLAYING:
+        return media_player::MEDIA_PLAYER_STATE_PLAYING;
+      case media_source::MediaSourceState::PAUSED:
+        return media_player::MEDIA_PLAYER_STATE_PAUSED;
+      case media_source::MediaSourceState::ERROR:
+        ESP_LOGE(TAG, "Media source is in error state");
+        return media_player::MEDIA_PLAYER_STATE_IDLE;
+      case media_source::MediaSourceState::IDLE:
+      default:
+        return media_player::MEDIA_PLAYER_STATE_IDLE;
+    }
+  }
+
+  // No active source — stay PLAYING during playlist transitions
+  if (has_next_item && old_state == media_player::MEDIA_PLAYER_STATE_PLAYING) {
+    return media_player::MEDIA_PLAYER_STATE_PLAYING;
+  }
+  return media_player::MEDIA_PLAYER_STATE_IDLE;
+}
+
 void SpeakerSourceMediaPlayer::loop() {
   // Process queued control commands
   this->process_control_queue_();
@@ -227,62 +252,14 @@ void SpeakerSourceMediaPlayer::loop() {
           break;
       }
     } else {
-      // Announcement pipeline is idle, check media pipeline
-      media_source::MediaSource *media_source_ptr = media_ps.active_source;
-      if (media_source_ptr != nullptr) {
-        media_source::MediaSourceState media_state = media_source_ptr->get_state();
-        switch (media_state) {
-          case media_source::MediaSourceState::IDLE:
-            this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
-            break;
-          case media_source::MediaSourceState::PAUSED:
-            this->state = media_player::MEDIA_PLAYER_STATE_PAUSED;
-            break;
-          case media_source::MediaSourceState::PLAYING:
-            this->state = media_player::MEDIA_PLAYER_STATE_PLAYING;
-            break;
-          case media_source::MediaSourceState::ERROR:
-            this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
-            ESP_LOGE(TAG, "Media source is in error state");
-            break;
-        }
-      } else {
-        if (media_has_next_item && old_state == media_player::MEDIA_PLAYER_STATE_PLAYING) {
-          this->state = media_player::MEDIA_PLAYER_STATE_PLAYING;
-        } else {
-          this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
-        }
-      }
+      // Announcement source is idle, fall through to media pipeline
+      this->state = this->get_media_pipeline_state_(media_ps.active_source, media_has_next_item, old_state);
     }
   } else if (announcement_has_next_item && old_state == media_player::MEDIA_PLAYER_STATE_ANNOUNCING) {
     this->state = media_player::MEDIA_PLAYER_STATE_ANNOUNCING;
   } else {
     // No active announcement, check media pipeline
-    media_source::MediaSource *media_source_ptr = media_ps.active_source;
-    if (media_source_ptr != nullptr) {
-      media_source::MediaSourceState media_state = media_source_ptr->get_state();
-      switch (media_state) {
-        case media_source::MediaSourceState::IDLE:
-          this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
-          break;
-        case media_source::MediaSourceState::PAUSED:
-          this->state = media_player::MEDIA_PLAYER_STATE_PAUSED;
-          break;
-        case media_source::MediaSourceState::PLAYING:
-          this->state = media_player::MEDIA_PLAYER_STATE_PLAYING;
-          break;
-        case media_source::MediaSourceState::ERROR:
-          this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
-          ESP_LOGE(TAG, "Media source is in error state");
-          break;
-      }
-    } else {
-      if (media_has_next_item && old_state == media_player::MEDIA_PLAYER_STATE_PLAYING) {
-        this->state = media_player::MEDIA_PLAYER_STATE_PLAYING;
-      } else {
-        this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
-      }
-    }
+    this->state = this->get_media_pipeline_state_(media_ps.active_source, media_has_next_item, old_state);
   }
 
   if (this->state != old_state) {
@@ -755,7 +732,7 @@ void SpeakerSourceMediaPlayer::save_volume_restore_state_() {
   this->pref_.save(&volume_restore_state);
 }
 
-void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state) {
+void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state, bool publish) {
   for (auto &ps : this->pipelines_) {
     if (ps.is_configured()) {
       ps.speaker->set_mute_state(mute_state);
@@ -765,7 +742,9 @@ void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state) {
   bool old_mute_state = this->is_muted_;
   this->is_muted_ = mute_state;
 
-  this->save_volume_restore_state_();
+  if (publish) {
+    this->save_volume_restore_state_();
+  }
 
   // Notify all media sources about the mute state change
   for (auto &ps : this->pipelines_) {
@@ -805,11 +784,12 @@ void SpeakerSourceMediaPlayer::set_volume_(float volume, bool publish) {
     }
   }
 
-  // Turn on the mute state if the volume is effectively zero, off otherwise
+  // Turn on the mute state if the volume is effectively zero, off otherwise.
+  // Pass publish=false since set_volume_ already saved above.
   if (volume < 0.001) {
-    this->set_mute_state_(true);
+    this->set_mute_state_(true, false);
   } else {
-    this->set_mute_state_(false);
+    this->set_mute_state_(false, false);
   }
 
   this->defer([this, volume]() { this->volume_trigger_.trigger(volume); });
