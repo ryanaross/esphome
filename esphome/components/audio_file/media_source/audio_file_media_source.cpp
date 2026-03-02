@@ -250,9 +250,7 @@ void AudioFileMediaSource::decode_task(void *params) {
     if (err != ESP_OK) {
       ESP_LOGE(TAG, "Failed to start decoder: %s", esp_err_to_name(err));
       xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     // Add the file as a const data source
@@ -320,9 +318,7 @@ void AudioFileMediaSource::decode_task(void *params) {
     xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPING);
   }
   xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_STOPPED);
-  while (true) {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
+  vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
 }
 
 }  // namespace audio_file
