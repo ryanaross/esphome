@@ -370,6 +370,7 @@ void HTTPMediaSource::read_task(void *params) {
 
     // Request Content-Type header for file type detection
     std::vector<std::string> collect_headers = {"content-type"};
+    std::vector<Header> headers = {};
 
     // Start HTTP request, retrying on transient failures (e.g., EAGAIN during header fetch)
     std::shared_ptr<HttpContainer> container;
@@ -378,7 +379,7 @@ void HTTPMediaSource::read_task(void *params) {
         break;
       }
 
-      container = http_client->get(this_source->current_uri_, {}, collect_headers);
+      container = http_client->get(this_source->current_uri_, headers, collect_headers);
 
       if (container != nullptr && is_success(container->status_code)) {
         break;  // Success
