@@ -143,6 +143,8 @@ class MediaSource {
   }
 
  private:
+  // Private to enforce the invariant that listener notifications always fire on state changes.
+  // All state transitions must go through set_state_() which couples the update with notification.
   MediaSourceState state_{MediaSourceState::IDLE};
   MediaSourceListener *listener_{nullptr};
 };
