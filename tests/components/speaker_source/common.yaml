@@ -1,0 +1,57 @@
+i2s_audio:
+  i2s_lrclk_pin: ${i2s_bclk_pin}
+  i2s_bclk_pin: ${i2s_lrclk_pin}
+  i2s_mclk_pin: ${i2s_mclk_pin}
+
+speaker:
+  - platform: i2s_audio
+    id: speaker_id
+    dac_type: external
+    i2s_dout_pin: ${i2s_dout_pin}
+  - platform: mixer
+    output_speaker: speaker_id
+    source_speakers:
+      - id: announcement_mixer_speaker_id
+      - id: media_mixer_speaker_id
+
+audio_file:
+
+network:
+
+http_request:
+
+media_source:
+  - platform: color_noise
+    id: media_color_noise
+    sample_rate: 48000
+  - platform: http_request
+    id: announcement_http_source
+    buffer_size: 50000
+  - platform: http_request
+    id: media_http_source
+    buffer_size: 100000
+  - platform: audio_file
+    id: announcement_audio_file_source
+
+media_player:
+  - platform: speaker_source
+    name: Media Player
+    volume_increment: 0.02
+    volume_max: 0.95
+    volume_min: 0.0
+    announcement_pipeline:
+      speaker: announcement_mixer_speaker_id
+      format: WAV
+      sample_rate: 48000
+      num_channels: 1
+      sources:
+        - announcement_http_source
+        - announcement_audio_file_source
+    media_pipeline:
+      speaker: media_mixer_speaker_id
+      format: FLAC
+      sample_rate: 48000
+      num_channels: 2
+      sources:
+        - media_color_noise
+        - media_http_source
