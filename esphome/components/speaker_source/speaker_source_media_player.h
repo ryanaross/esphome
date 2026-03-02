@@ -136,8 +136,8 @@ class SpeakerSourceMediaPlayer : public Component,
  protected:
   /// @brief Find which pipeline a source belongs to by checking active, pending, and stopping sources
   /// @param source The source to find
-  /// @return The pipeline index, or MEDIA_PIPELINE as fallback
-  uint8_t find_pipeline_for_source_(media_source::MediaSource *source) const;
+  /// @return The pipeline index, or empty optional if not found in any pipeline
+  optional<uint8_t> find_pipeline_for_source_(media_source::MediaSource *source) const;
 
   void handle_speaker_playback_callback_(uint32_t frames, int64_t timestamp, uint8_t pipeline);
 

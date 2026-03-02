@@ -70,15 +70,15 @@ void SpeakerSourceMediaPlayer::set_playlist_delay_ms(uint8_t pipeline, uint32_t 
   }
 }
 
-uint8_t SpeakerSourceMediaPlayer::find_pipeline_for_source_(media_source::MediaSource *source) const {
+optional<uint8_t> SpeakerSourceMediaPlayer::find_pipeline_for_source_(media_source::MediaSource *source) const {
   for (size_t i = 0; i < this->pipelines_.size(); i++) {
     if (this->pipelines_[i].active_source == source || this->pipelines_[i].pending_source == source ||
         this->pipelines_[i].stopping_source == source) {
       return i;
     }
   }
-  ESP_LOGW(TAG, "Source %p not found in any pipeline, defaulting to media pipeline", source);
-  return MEDIA_PIPELINE;  // fallback
+  ESP_LOGW(TAG, "Source %p not found in any pipeline", source);
+  return {};
 }
 
 void SpeakerSourceMediaPlayer::handle_speaker_playback_callback_(uint32_t frames, int64_t timestamp, uint8_t pipeline) {
@@ -117,19 +117,25 @@ void SpeakerSourceMediaPlayer::on_mute_request(media_source::MediaSource *source
 void SpeakerSourceMediaPlayer::on_play_uri_request(media_source::MediaSource *source, const std::string &uri) {
   // Smart source is requesting the player to play a different URI
   // Determine pipeline from the requesting source
-  uint8_t pipeline = this->find_pipeline_for_source_(source);
+  auto pipeline = this->find_pipeline_for_source_(source);
+  if (!pipeline.has_value()) {
+    return;
+  }
 
   auto call = this->make_call();
   call.set_media_url(uri);
-  call.set_announcement(pipeline == ANNOUNCEMENT_PIPELINE);
+  call.set_announcement(*pipeline == ANNOUNCEMENT_PIPELINE);
   call.perform();
 }
 
 void SpeakerSourceMediaPlayer::on_media_state_changed(media_source::MediaSource *source,
                                                       media_source::MediaSourceState state) {
   // Find which pipeline this source belongs to
-  uint8_t pipeline = this->find_pipeline_for_source_(source);
-  PipelineState &ps = this->pipelines_[pipeline];
+  auto pipeline = this->find_pipeline_for_source_(source);
+  if (!pipeline.has_value()) {
+    return;
+  }
+  PipelineState &ps = this->pipelines_[*pipeline];
 
   if (state == media_source::MediaSourceState::IDLE) {
     // Source went idle - clear stopping flag if this was the source we asked to stop
@@ -153,7 +159,7 @@ void SpeakerSourceMediaPlayer::on_media_state_changed(media_source::MediaSource 
       }
 
       // Queue PLAYLIST_ADVANCE to handle track completion - all playlist logic is in process_control_queue_
-      this->queue_command_(MediaPlayerControlCommand::PLAYLIST_ADVANCE, pipeline);
+      this->queue_command_(MediaPlayerControlCommand::PLAYLIST_ADVANCE, *pipeline);
     }
   } else if (state == media_source::MediaSourceState::PLAYING) {
     // Source started playing - make it the active source if no one else is active
@@ -171,8 +177,12 @@ void SpeakerSourceMediaPlayer::on_media_state_changed(media_source::MediaSource 
 
 size_t SpeakerSourceMediaPlayer::on_media_output(media_source::MediaSource *source, uint8_t *data, size_t length,
                                                  TickType_t ticks, const audio::AudioStreamInfo &stream_info) {
-  uint8_t pipeline = this->find_pipeline_for_source_(source);
-  PipelineState &ps = this->pipelines_[pipeline];
+  auto pipeline = this->find_pipeline_for_source_(source);
+  if (!pipeline.has_value()) {
+    vTaskDelay(ticks);
+    return 0;
+  }
+  PipelineState &ps = this->pipelines_[*pipeline];
 
   if (!ps.is_configured()) {
     vTaskDelay(ticks);
