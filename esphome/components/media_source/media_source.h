@@ -39,7 +39,7 @@ enum class MediaSourceCommand : uint8_t {
   SHUFFLE,
   UNSHUFFLE,
 
-  // Command to join a group for synchronized playback; simple source should ignore this.
+  // Command to join a group for synchronized playback; simple sources should ignore this.
   GROUP_JOIN,
 };
 
