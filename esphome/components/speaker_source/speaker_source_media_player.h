@@ -48,6 +48,9 @@ struct PipelineState {
 
   std::vector<media_source::MediaSource *> media_sources;
 
+  // Dynamic allocation is unavoidable here: URIs from Home Assistant are arbitrary-length strings
+  // (media URLs with tokens can easily exceed 500 bytes), and playlist size is unbounded.
+  // Pre-allocating fixed buffers would waste significant RAM when idle without covering worst cases.
   std::vector<std::string> playlist;
   size_t playlist_index{0};
   RepeatMode repeat_mode{REPEAT_OFF};
