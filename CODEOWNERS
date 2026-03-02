@@ -53,8 +53,9 @@ esphome/components/atm90e26/* @danieltwagner
 esphome/components/atm90e32/* @circuitsetup @descipher
 esphome/components/audio/* @kahrendt
 esphome/components/audio_adc/* @kbx81
-esphome/components/audio_file/* @kahrendt
 esphome/components/audio_dac/* @kbx81
+esphome/components/audio_file/* @kahrendt
+esphome/components/audio_file/media_source/* @kahrendt
 esphome/components/axs15231/* @clydebarrow
 esphome/components/b_parasite/* @rbaron
 esphome/components/ballu/* @bazuchan
@@ -110,7 +111,7 @@ esphome/components/chsc6x/* @kkosik20
 esphome/components/climate/* @esphome/core
 esphome/components/climate_ir/* @glmnet
 esphome/components/cm1106/* @andrewjswan
-esphome/components/color_noise/* @kahrendt
+esphome/components/color_noise/media_source/* @kahrendt
 esphome/components/color_temperature/* @jesserockz
 esphome/components/combination/* @Cat-Ion @kahrendt
 esphome/components/const/* @esphome/core
