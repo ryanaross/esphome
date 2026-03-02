@@ -16,10 +16,10 @@ namespace esphome {
 namespace media_source {
 
 enum class MediaSourceState : uint8_t {
-  IDLE = 0,     // Not playing, ready to accept play_uri
-  PLAYING = 1,  // Currently playing media
-  PAUSED = 2,   // Playback paused, can be resumed
-  ERROR = 4,    // Error occurred during playback
+  IDLE,     // Not playing, ready to accept play_uri
+  PLAYING,  // Currently playing media
+  PAUSED,   // Playback paused, can be resumed
+  ERROR,    // Error occurred during playback
 };
 
 /// @brief Commands that can be sent from the orchestrator to a media source
