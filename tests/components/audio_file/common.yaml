@@ -1,0 +1,5 @@
+audio_file:
+
+media_source:
+  - platform: audio_file
+    id: audio_file_noise_source
