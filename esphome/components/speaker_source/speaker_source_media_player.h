@@ -95,7 +95,7 @@ class SpeakerSourceMediaPlayer : public Component,
   float get_setup_priority() const override { return esphome::setup_priority::PROCESSOR; }
   void setup() override;
   void loop() override;
-  // TODO: implement dump_config() to log pipeline configuration, volume settings, and registered sources
+  void dump_config() override;
 
   // MediaPlayer implementations
   media_player::MediaPlayerTraits get_traits() override;

@@ -16,6 +16,13 @@ static const uint32_t MEDIA_CONTROLS_QUEUE_LENGTH = 20;
 
 static const char *const TAG = "speaker_source_media_player";
 
+void SpeakerSourceMediaPlayer::dump_config() {
+  ESP_LOGCONFIG(TAG, "Speaker Source Media Player:");
+  ESP_LOGCONFIG(TAG, "  Volume Increment: %.2f", this->volume_increment_);
+  ESP_LOGCONFIG(TAG, "  Volume Min: %.2f", this->volume_min_);
+  ESP_LOGCONFIG(TAG, "  Volume Max: %.2f", this->volume_max_);
+}
+
 void SpeakerSourceMediaPlayer::setup() {
   this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
 
