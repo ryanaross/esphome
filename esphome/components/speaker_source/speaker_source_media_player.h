@@ -46,6 +46,8 @@ struct PipelineState {
   media_source::MediaSource *stopping_source{nullptr};  // Source we've asked to stop, awaiting IDLE
   media_source::MediaSource *pending_source{nullptr};   // Source we've asked to play, awaiting PLAYING
 
+  std::vector<media_source::MediaSource *> media_sources;
+
   std::vector<std::string> playlist;
   size_t playlist_index{0};
   RepeatMode repeat_mode{REPEAT_OFF};
@@ -118,7 +120,9 @@ class SpeakerSourceMediaPlayer : public Component,
   void set_volume_max(float volume_max) { this->volume_max_ = volume_max; }
   void set_volume_min(float volume_min) { this->volume_min_ = volume_min; }
 
-  void add_media_source(media_source::MediaSource *media_source) { this->media_sources_.push_back(media_source); }
+  void add_media_source(uint8_t pipeline, media_source::MediaSource *media_source) {
+    this->pipelines_[pipeline].media_sources.push_back(media_source);
+  }
 
   void set_speaker(uint8_t pipeline, speaker::Speaker *speaker) { this->pipelines_[pipeline].speaker = speaker; }
   void set_format(uint8_t pipeline, const media_player::MediaPlayerSupportedFormat &format) {
@@ -155,7 +159,7 @@ class SpeakerSourceMediaPlayer : public Component,
 
   void process_control_queue_();
   bool try_execute_play_uri_(const std::string &uri, uint8_t pipeline);
-  media_source::MediaSource *find_source_for_uri_(const std::string &uri);
+  media_source::MediaSource *find_source_for_uri_(const std::string &uri, uint8_t pipeline);
   void queue_command_(MediaPlayerControlCommand::Type type, uint8_t pipeline);
   void queue_play_current_(uint8_t pipeline, uint32_t delay_ms = 0);
 
@@ -167,8 +171,6 @@ class SpeakerSourceMediaPlayer : public Component,
 
   /// @brief Clears shuffle indices and adjusts playlist_index to maintain current track
   void unshuffle_playlist_(uint8_t pipeline);
-
-  std::vector<media_source::MediaSource *> media_sources_;
 
   QueueHandle_t media_control_command_queue_;
 

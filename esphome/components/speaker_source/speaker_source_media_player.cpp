@@ -33,8 +33,10 @@ void SpeakerSourceMediaPlayer::setup() {
   }
 
   // Register this player as listener for all sources
-  for (auto *media_source : this->media_sources_) {
-    media_source->set_listener(this);
+  for (auto &ps : this->pipelines_) {
+    for (auto *media_source : ps.media_sources) {
+      media_source->set_listener(this);
+    }
   }
 
   // Determine pipeline count for logging and speaker callback registration
@@ -289,8 +291,9 @@ void SpeakerSourceMediaPlayer::loop() {
   }
 }
 
-media_source::MediaSource *SpeakerSourceMediaPlayer::find_source_for_uri_(const std::string &uri) {
-  for (auto &source : this->media_sources_) {
+media_source::MediaSource *SpeakerSourceMediaPlayer::find_source_for_uri_(const std::string &uri, uint8_t pipeline) {
+  PipelineState &ps = this->pipelines_[pipeline];
+  for (auto *source : ps.media_sources) {
     if (source->can_handle(uri)) {
       // Check if this source is idle
       if (source->get_state() == media_source::MediaSourceState::IDLE) {
@@ -299,7 +302,7 @@ media_source::MediaSource *SpeakerSourceMediaPlayer::find_source_for_uri_(const 
     }
   }
   // If no idle source found, try again without checking state (will be stopped by try_execute_play_uri_)
-  for (auto &source : this->media_sources_) {
+  for (auto &source : ps.media_sources) {
     if (source->can_handle(uri)) {
       return source;  // First match wins
     }
@@ -309,7 +312,7 @@ media_source::MediaSource *SpeakerSourceMediaPlayer::find_source_for_uri_(const 
 
 bool SpeakerSourceMediaPlayer::try_execute_play_uri_(const std::string &uri, uint8_t pipeline) {
   // Find target source
-  media_source::MediaSource *target_source = this->find_source_for_uri_(uri);
+  media_source::MediaSource *target_source = this->find_source_for_uri_(uri, pipeline);
   if (target_source == nullptr) {
     ESP_LOGW(TAG, "No source found for URI: %s", uri.c_str());
     return true;  // Remove from queue (unrecoverable)
@@ -765,8 +768,10 @@ void SpeakerSourceMediaPlayer::set_mute_state_(bool mute_state) {
   this->save_volume_restore_state_();
 
   // Notify all media sources about the mute state change
-  for (auto *media_source : this->media_sources_) {
-    media_source->notify_mute_changed(mute_state);
+  for (auto &ps : this->pipelines_) {
+    for (auto *media_source : ps.media_sources) {
+      media_source->notify_mute_changed(mute_state);
+    }
   }
 
   if (old_mute_state != mute_state) {
@@ -794,8 +799,10 @@ void SpeakerSourceMediaPlayer::set_volume_(float volume, bool publish) {
   }
 
   // Notify all media sources about the volume change
-  for (auto *media_source : this->media_sources_) {
-    media_source->notify_volume_changed(volume);
+  for (auto &ps : this->pipelines_) {
+    for (auto *media_source : ps.media_sources) {
+      media_source->notify_volume_changed(volume);
+    }
   }
 
   // Turn on the mute state if the volume is effectively zero, off otherwise

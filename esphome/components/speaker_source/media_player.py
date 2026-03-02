@@ -8,6 +8,7 @@ from esphome.const import (
     CONF_ID,
     CONF_NUM_CHANNELS,
     CONF_SAMPLE_RATE,
+    CONF_SPEAKER,
     CONF_TASK_STACK_IN_PSRAM,
 )
 from esphome.core.entity_helpers import inherit_property_from
@@ -15,9 +16,7 @@ from esphome.core.entity_helpers import inherit_property_from
 from . import speaker_source_ns
 
 CONF_ANNOUNCEMENT_PIPELINE = "announcement_pipeline"
-CONF_ANNOUNCEMENT_SPEAKER = "announcement_speaker"
 CONF_MEDIA_PIPELINE = "media_pipeline"
-CONF_MEDIA_SPEAKER = "media_speaker"
 CONF_ON_MUTE = "on_mute"
 CONF_ON_UNMUTE = "on_unmute"
 CONF_ON_VOLUME = "on_volume"
@@ -91,36 +90,24 @@ def _get_supported_format_struct(pipeline, pipeline_type):
 
 def _validate_pipeline(config):
     # Inherit settings from speaker if not manually set
-    if CONF_ANNOUNCEMENT_SPEAKER in config:
-        inherit_property_from(CONF_NUM_CHANNELS, CONF_ANNOUNCEMENT_SPEAKER)(config)
-        inherit_property_from(CONF_SAMPLE_RATE, CONF_ANNOUNCEMENT_SPEAKER)(config)
-    elif CONF_MEDIA_SPEAKER in config:
-        inherit_property_from(CONF_NUM_CHANNELS, CONF_MEDIA_SPEAKER)(config)
-        inherit_property_from(CONF_SAMPLE_RATE, CONF_MEDIA_SPEAKER)(config)
+    inherit_property_from(CONF_NUM_CHANNELS, CONF_SPEAKER)(config)
+    inherit_property_from(CONF_SAMPLE_RATE, CONF_SPEAKER)(config)
 
-    # Validate the settings are compatible with the speakers
-    if CONF_ANNOUNCEMENT_SPEAKER in config:
-        audio.final_validate_audio_schema(
-            "speaker_source media_player announcement",
-            audio_device=CONF_ANNOUNCEMENT_SPEAKER,
-            bits_per_sample=16,
-            channels=config.get(CONF_NUM_CHANNELS),
-            sample_rate=config.get(CONF_SAMPLE_RATE),
-        )(config)
-    if CONF_MEDIA_SPEAKER in config:
-        audio.final_validate_audio_schema(
-            "speaker_source media_player media",
-            audio_device=CONF_MEDIA_SPEAKER,
-            bits_per_sample=16,
-            channels=config.get(CONF_NUM_CHANNELS),
-            sample_rate=config.get(CONF_SAMPLE_RATE),
-        )(config)
+    audio.final_validate_audio_schema(
+        "speaker_source media_player",
+        audio_device=CONF_SPEAKER,
+        bits_per_sample=16,
+        channels=config.get(CONF_NUM_CHANNELS),
+        sample_rate=config.get(CONF_SAMPLE_RATE),
+    )(config)
 
     return config
 
 
 PIPELINE_SCHEMA = cv.Schema(
     {
+        cv.Required(CONF_SPEAKER): cv.use_id(speaker.Speaker),
+        cv.Required(CONF_SOURCES): cv.ensure_list(cv.use_id(media_source.MediaSource)),
         cv.Optional(CONF_FORMAT, default="FLAC"): cv.enum(audio.AUDIO_FILE_TYPE_ENUM),
         cv.Optional(CONF_SAMPLE_RATE): cv.int_range(min=1),
         cv.Optional(CONF_NUM_CHANNELS): cv.int_range(1, 2),
@@ -139,11 +126,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_VOLUME_INITIAL, default=0.5): cv.percentage,
             cv.Optional(CONF_VOLUME_MAX, default=1.0): cv.percentage,
             cv.Optional(CONF_VOLUME_MIN, default=0.0): cv.percentage,
-            cv.Optional(CONF_SOURCES): cv.ensure_list(
-                cv.use_id(media_source.MediaSource)
-            ),
-            cv.Optional(CONF_ANNOUNCEMENT_SPEAKER): cv.use_id(speaker.Speaker),
-            cv.Optional(CONF_MEDIA_SPEAKER): cv.use_id(speaker.Speaker),
             cv.Optional(CONF_ANNOUNCEMENT_PIPELINE): PIPELINE_SCHEMA,
             cv.Optional(CONF_MEDIA_PIPELINE): PIPELINE_SCHEMA,
             cv.Optional(CONF_ON_MUTE): automation.validate_automation(single=True),
@@ -207,20 +189,18 @@ async def to_code(config):
     cg.add(var.set_volume_max(config[CONF_VOLUME_MAX]))
     cg.add(var.set_volume_min(config[CONF_VOLUME_MIN]))
 
-    if CONF_SOURCES in config:
-        for source in config[CONF_SOURCES]:
-            src = await cg.get_variable(source)
-            cg.add(var.add_media_source(src))
-
-    if CONF_ANNOUNCEMENT_SPEAKER in config:
-        spk = await cg.get_variable(config[CONF_ANNOUNCEMENT_SPEAKER])
-        cg.add(var.set_speaker(Pipeline.ANNOUNCEMENT_PIPELINE, spk))
-
-    if CONF_MEDIA_SPEAKER in config:
-        spk = await cg.get_variable(config[CONF_MEDIA_SPEAKER])
-        cg.add(var.set_speaker(Pipeline.MEDIA_PIPELINE, spk))
-
     if announcement_pipeline_config := config.get(CONF_ANNOUNCEMENT_PIPELINE):
+        for source in announcement_pipeline_config[CONF_SOURCES]:
+            src = await cg.get_variable(source)
+            cg.add(var.add_media_source(Pipeline.ANNOUNCEMENT_PIPELINE, src))
+
+        cg.add(
+            var.set_speaker(
+                Pipeline.ANNOUNCEMENT_PIPELINE,
+                await cg.get_variable(announcement_pipeline_config[CONF_SPEAKER]),
+            )
+        )
+
         cg.add(
             var.set_format(
                 Pipeline.ANNOUNCEMENT_PIPELINE,
@@ -237,6 +217,17 @@ async def to_code(config):
         )
 
     if media_pipeline_config := config.get(CONF_MEDIA_PIPELINE):
+        for source in media_pipeline_config[CONF_SOURCES]:
+            src = await cg.get_variable(source)
+            cg.add(var.add_media_source(Pipeline.MEDIA_PIPELINE, src))
+
+        cg.add(
+            var.set_speaker(
+                Pipeline.MEDIA_PIPELINE,
+                await cg.get_variable(media_pipeline_config[CONF_SPEAKER]),
+            )
+        )
+
         cg.add(
             var.set_format(
                 Pipeline.MEDIA_PIPELINE,
