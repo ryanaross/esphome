@@ -406,9 +406,7 @@ void HTTPMediaSource::read_task(void *params) {
       }
       xEventGroupSetBits(this_source->event_group_,
                          EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED | EventGroupBits::COMMAND_STOP);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     // Detect audio file type from Content-Type header or URL
@@ -420,9 +418,7 @@ void HTTPMediaSource::read_task(void *params) {
       container->end();
       xEventGroupSetBits(this_source->event_group_,
                          EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED | EventGroupBits::COMMAND_STOP);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     // Create transfer buffer for efficient writes to ring buffer
@@ -435,9 +431,7 @@ void HTTPMediaSource::read_task(void *params) {
       container->end();
       xEventGroupSetBits(this_source->event_group_,
                          EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED | EventGroupBits::COMMAND_STOP);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     {  // Ensures temp_ring_buffer falls out of scope and deallocates
@@ -452,9 +446,7 @@ void HTTPMediaSource::read_task(void *params) {
         container->end();
         xEventGroupSetBits(this_source->event_group_, EventGroupBits::READER_ERROR | EventGroupBits::READER_FINISHED |
                                                           EventGroupBits::COMMAND_STOP);
-        while (true) {
-          vTaskDelay(pdMS_TO_TICKS(1000));
-        }
+        vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
       }
 
       transfer_buffer->set_sink(this_source->raw_file_ring_buffer_);
@@ -521,9 +513,7 @@ void HTTPMediaSource::read_task(void *params) {
   // Safe to release now - decode task has acquired its own shared_ptr (or exited)
   ring_buffer_guard.reset();
 
-  while (true) {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
+  vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
 }
 
 void HTTPMediaSource::decode_task(void *params) {
@@ -549,9 +539,7 @@ void HTTPMediaSource::decode_task(void *params) {
       // Signal reader task so it doesn't wait forever for us to acquire the ring buffer
       xEventGroupSetBits(this_source->event_group_,
                          EventGroupBits::DECODER_RINGBUF_ACQUIRED | EventGroupBits::DECODER_FINISHED);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     size_t transfer_buffer_size = std::min(this_source->buffer_size_ / 4, DEFAULT_TRANSFER_BUFFER_SIZE);
@@ -569,9 +557,7 @@ void HTTPMediaSource::decode_task(void *params) {
       ESP_LOGE(TAG, "Failed to start decoder: %s", esp_err_to_name(err));
       xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_ERROR | EventGroupBits::DECODER_FINISHED |
                                                         EventGroupBits::COMMAND_STOP);
-      while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-      }
+      vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
     }
 
     xEventGroupSetBits(this_source->event_group_, EventGroupBits::TASK_RUNNING);
@@ -645,9 +631,7 @@ void HTTPMediaSource::decode_task(void *params) {
   // Set DECODER_FINISHED bit to signal we're done
   xEventGroupSetBits(this_source->event_group_, EventGroupBits::DECODER_FINISHED);
 
-  while (true) {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-  }
+  vTaskSuspend(nullptr);  // Suspend this task indefinitely until the loop method deletes it
 }
 
 }  // namespace http_request
