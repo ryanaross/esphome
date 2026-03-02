@@ -82,6 +82,8 @@ def _get_supported_format_struct(pipeline, pipeline_type):
                 media_player.MEDIA_PLAYER_FORMAT_PURPOSE_ENUM["announcement"],
             )
         )
+    # Omit sample_bytes for MP3: ffmpeg transcoding in Home Assistant fails
+    # if the number of bytes per sample is specified for MP3.
     if pipeline[CONF_FORMAT] != "MP3":
         args.append(("sample_bytes", 2))
 
