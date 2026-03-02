@@ -140,6 +140,12 @@ bool HTTPMediaSource::play_uri(const std::string &uri) {
   return true;
 }
 
+void HTTPMediaSource::dump_config() {
+  ESP_LOGCONFIG(TAG, "HTTP Media Source:");
+  ESP_LOGCONFIG(TAG, "  Buffer Size: %zu bytes", this->buffer_size_);
+  ESP_LOGCONFIG(TAG, "  Task Stack in PSRAM: %s", this->task_stack_in_psram_ ? "Yes" : "No");
+}
+
 void HTTPMediaSource::setup() {
   this->disable_loop();
 

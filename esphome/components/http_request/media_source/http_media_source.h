@@ -34,7 +34,7 @@ class HTTPMediaSource : public Component, public media_source::MediaSource, publ
  public:
   void setup() override;
   void loop() override;
-  // TODO: implement dump_config() to log buffer size and task stack configuration
+  void dump_config() override;
 
   // MediaSource interface implementation
   bool play_uri(const std::string &uri) override;
