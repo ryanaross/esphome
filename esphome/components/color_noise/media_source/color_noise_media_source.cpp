@@ -145,6 +145,12 @@ bool ColorNoiseMediaSource::play_uri(const std::string &uri) {
   return true;
 }
 
+void ColorNoiseMediaSource::dump_config() {
+  ESP_LOGCONFIG(TAG, "Color Noise Media Source:");
+  ESP_LOGCONFIG(TAG, "  Sample Rate: %u Hz", this->sample_rate_);
+  ESP_LOGCONFIG(TAG, "  Task Stack in PSRAM: %s", this->task_stack_in_psram_ ? "Yes" : "No");
+}
+
 void ColorNoiseMediaSource::setup() {
   this->disable_loop();
 
