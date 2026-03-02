@@ -1,4 +1,4 @@
 media_source:
   - platform: color_noise
-    name: "Color Noise"
+    id: color_noise_source
     sample_rate: 16000
