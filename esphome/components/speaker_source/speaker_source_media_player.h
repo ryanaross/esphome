@@ -109,8 +109,6 @@ class SpeakerSourceMediaPlayer : public Component,
   void on_mute_request(media_source::MediaSource *source, bool is_muted) override;
   void on_play_uri_request(media_source::MediaSource *source, const std::string &uri) override;
 
-  void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
-
   // Percentage to increase or decrease the volume for volume up or volume down commands
   void set_volume_increment(float volume_increment) { this->volume_increment_ = volume_increment; }
 
@@ -186,8 +184,6 @@ class SpeakerSourceMediaPlayer : public Component,
   // Pipeline state for media (index 0) and announcement (index 1) pipelines
   // Note: No mutex needed - pipelines are only accessed from the main loop thread
   std::array<PipelineState, 2> pipelines_;
-
-  bool task_stack_in_psram_;
 
   bool is_paused_{false};
   bool is_muted_{false};

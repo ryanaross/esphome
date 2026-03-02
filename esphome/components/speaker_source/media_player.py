@@ -9,7 +9,6 @@ from esphome.const import (
     CONF_NUM_CHANNELS,
     CONF_SAMPLE_RATE,
     CONF_SPEAKER,
-    CONF_TASK_STACK_IN_PSRAM,
 )
 from esphome.core.entity_helpers import inherit_property_from
 
@@ -123,7 +122,6 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(SpeakerSourceMediaPlayer),
-            cv.Optional(CONF_TASK_STACK_IN_PSRAM, default=False): cv.boolean,
             cv.Optional(CONF_VOLUME_INCREMENT, default=0.05): cv.percentage,
             cv.Optional(CONF_VOLUME_INITIAL, default=0.5): cv.percentage,
             cv.Optional(CONF_VOLUME_MAX, default=1.0): cv.percentage,
@@ -185,7 +183,6 @@ async def to_code(config):
     await cg.register_component(var, config)
     await media_player.register_media_player(var, config)
 
-    cg.add(var.set_task_stack_in_psram(config[CONF_TASK_STACK_IN_PSRAM]))
     cg.add(var.set_volume_increment(config[CONF_VOLUME_INCREMENT]))
     cg.add(var.set_volume_initial(config[CONF_VOLUME_INITIAL]))
     cg.add(var.set_volume_max(config[CONF_VOLUME_MAX]))
