@@ -27,9 +27,9 @@ namespace esphome::sendspin {
 // Time filter tuning constants
 static constexpr double TIME_FILTER_PROCESS_STD_DEV = 0.0;
 static constexpr double TIME_FILTER_DRIFT_PROCESS_STD_DEV = 5e-11;
-static constexpr double TIME_FILTER_FORGET_FACTOR = 1.1;
-static constexpr double TIME_FILTER_ADAPTIVE_CUTOFF = 2.0;
-static constexpr uint8_t TIME_FILTER_MIN_SAMPLES = 100;
+static constexpr double TIME_FILTER_FORGET_FACTOR = 1.4;
+static constexpr double TIME_FILTER_ADAPTIVE_CUTOFF = 1.5;
+static constexpr uint8_t TIME_FILTER_MIN_SAMPLES = 50;
 static constexpr double TIME_FILTER_DRIFT_SIGNIFICANCE_THRESHOLD = 2.0;
 
 /// @brief Two-dimensional Kalman filter for NTP-style time synchronization between client and server.
