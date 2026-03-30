@@ -84,6 +84,8 @@ void SendspinMediaSource::setup() {
         this->enable_loop_soon_any_context();
         break;
       case SendspinControls::STOP:
+        ESP_LOGD(TAG, "Controls: STOP received (task running: %s)",
+                 this->generation_state_ == SendspinGenerationState::GENERATING ? "yes" : "no");
         // Intentional fallthrough
       case SendspinControls::CLEAR:
         xEventGroupSetBits(this->event_group_, EventGroupBits::COMMAND_STOP);
@@ -516,6 +518,8 @@ DecodeResult SendspinMediaSource::sync_decode_audio_(SyncContext &sync_context) 
 
     if (client_timestamp < sync_context.new_audio_client_playtime - HARD_SYNC_THRESHOLD_US) {
       // This chunk will arrive too late to be played, skip it!
+      ESP_LOGD(TAG, "Skipping stale chunk: behind by %" PRId64 " us",
+               sync_context.new_audio_client_playtime - client_timestamp);
       this->encoded_ring_buffer_->return_chunk(sync_context.encoded_entry);
       sync_context.encoded_entry = nullptr;
       return DecodeResult::SKIPPED;
@@ -601,6 +605,9 @@ SyncTaskState SendspinMediaSource::sync_handle_synchronize_audio_(SyncContext &s
 
   if (raw_error > active_threshold) {
     // Buffer will run out before this chunk is supposed to play - insert silence to fill the gap
+    if (!sync_context.hard_syncing) {
+      ESP_LOGD(TAG, "Hard sync start: %" PRId64 " us ahead (inserting silence)", raw_error);
+    }
     sync_context.hard_syncing = true;
 
     // Clear any stale interpolation data
@@ -630,6 +637,9 @@ SyncTaskState SendspinMediaSource::sync_handle_synchronize_audio_(SyncContext &s
   } else if (raw_error < -active_threshold) {
     // Chunk should have played already - we're behind, drop it
     // The skip logic in sync_decode_audio_ will keep dropping until we catch up
+    if (!sync_context.hard_syncing) {
+      ESP_LOGD(TAG, "Hard sync start: %" PRId64 " us behind (dropping chunk)", -raw_error);
+    }
     sync_context.hard_syncing = true;
     sync_context.decode_buffer->decrease_buffer_length(sync_context.decode_buffer->available());
 #ifdef SENDSPIN_MEDIA_SOURCE_DEBUG

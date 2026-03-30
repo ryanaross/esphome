@@ -51,6 +51,9 @@ TimeBurstResult SendspinTimeBurst::loop(SendspinConnection *conn) {
         if (time_filter != nullptr && this->best_max_error_ < std::numeric_limits<int64_t>::max()) {
           time_filter->update(this->best_offset_, this->best_max_error_, this->best_timestamp_);
           ESP_LOGV(TAG, "Burst complete (with timeouts), best max_error: %" PRId64 " us", this->best_max_error_);
+        } else {
+          ESP_LOGW(TAG, "Burst complete: ALL %u messages timed out, filter not updated (error: %" PRId64 " us)",
+                   BURST_SIZE, time_filter != nullptr ? time_filter->get_error() : -1);
         }
         this->last_burst_complete_time_ = now_ms;
         return {.sent = false, .burst_completed = true};
